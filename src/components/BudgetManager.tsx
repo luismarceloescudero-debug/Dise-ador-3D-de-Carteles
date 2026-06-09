@@ -24,7 +24,8 @@ import {
   Table,
   CheckSquare,
   Square,
-  ShieldAlert
+  ShieldAlert,
+  ExternalLink
 } from "lucide-react";
 import { SupplierPreset, StructureConfig } from "../types";
 import { SUPPLIER_PRESETS, calculateMaterials } from "../data";
@@ -1447,15 +1448,85 @@ export function BudgetManager({
                   </p>
                 </div>
 
-                <div className="md:col-span-2 rounded-lg bg-slate-900/40 p-3.5 border border-slate-800 text-[11.5px] text-slate-350 leading-relaxed text-left">
-                  <span className="font-extrabold text-amber-500 flex items-center gap-1 mb-1">
-                    <Info className="h-4 w-4" /> ¿Qué es una Clave API, un SDK y en qué se diferencian?
-                  </span>
-                  Para que lo entiendas en términos sencillos de obra:
-                  <ul className="list-disc list-inside mt-1.5 space-y-1.5 pl-1">
-                    <li><strong>Clave API (API Key)</strong>: Es como la <strong>tarjeta/clave personal de ingreso</strong> a la obra. Es una clave o contraseña larga que te entrega cada proveedor de IA (como x.ai para Grok, u OpenAI) al crear una cuenta. Al pegarla aquí, el cotizador la envía para activar el modelo.</li>
-                    <li><strong>SDK (Software Development Kit)</strong>: Es el <strong>camión de herramientas físicas</strong> que ya viene pre-instalado de fábrica dentro del cotizador. No necesitas descargar ni entender nada técnico del SDK, ya que el cotizador lo incluye internamente. Solo requieres pegar tu <em>Clave API</em> para encender estas herramientas.</li>
-                  </ul>
+                <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* EDUCATION BLOCK */}
+                  <div className="rounded-xl bg-slate-900/40 p-3.5 border border-slate-850 text-[11px] text-slate-350 leading-relaxed text-left flex flex-col justify-between">
+                    <div>
+                      <span className="font-extrabold text-amber-500 flex items-center gap-1.5 mb-1 text-xs uppercase tracking-wider">
+                        <Info className="h-4 w-4 text-amber-500" /> Glosario Rápido del Taller
+                      </span>
+                      <ul className="list-disc list-inside mt-2 space-y-2 pl-1 text-[11px] text-slate-400">
+                        <li><strong>Clave API (API Key)</strong>: Es como la <strong>tarjeta o ficha de ingreso</strong> a la obra. Es una contraseña alfanumérica larga que te entrega cada proveedor de IA al crear una cuenta.</li>
+                        <li><strong>SDK (Software Development Kit)</strong>: Es el <strong>camión de herramientas físicas</strong> que ya viene soldado e integrado de fábrica en el cotizador. Solo requiere que le pongas tu <em>Clave API</em> para encenderse.</li>
+                        <li><strong>Instalación Servidor</strong>: Podés crear un archivo llamado <code className="bg-slate-950 px-1 py-0.5 rounded text-amber-400 font-mono text-[10px] select-all">.env</code> en el directorio raíz de la app y pegar <code className="bg-slate-950 px-1 py-0.5 rounded text-cyan-400 font-mono text-[10px] select-all">GEMINI_API_KEY=tu_clave_real_aca</code>.</li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  {/* OFFICIAL LINKS BLOCK */}
+                  <div className="rounded-xl bg-slate-900/20 p-3.5 border border-slate-850 text-left space-y-2.5">
+                    <span className="font-extrabold text-cyan-400 flex items-center gap-1.5 text-xs uppercase tracking-wider">
+                      <ExternalLink className="h-4 w-4 text-cyan-400" /> Enlaces Oficiales de Configuración
+                    </span>
+                    <p className="text-[10.5px] text-slate-400 leading-normal">
+                      Hacé clic en el proveedor que elijas para registrarte de forma directa, conseguir tu clave de acceso API y pegarla en los ajustes:
+                    </p>
+                    
+                    <div className="grid grid-cols-1 gap-1.5 pt-1">
+                      <a 
+                        href="https://aistudio.google.com/" 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 hover:border-emerald-500/40 text-[11px] text-emerald-300 transition active:scale-98 font-bold"
+                      >
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                          Google AI Studio (Gemini - Principal Gratis)
+                        </span>
+                        <span className="text-[9px] uppercase tracking-wider text-emerald-400 font-mono text-right">Consigue Gratis →</span>
+                      </a>
+
+                      <a 
+                        href="https://console.x.ai/" 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-900 border border-slate-800 hover:border-slate-700 text-[11px] text-slate-300 transition active:scale-98 font-medium"
+                      >
+                        <span>x.ai Grok (Respaldo Oficial)</span>
+                        <span className="text-[9px] text-slate-500">x.ai Console →</span>
+                      </a>
+
+                      <a 
+                        href="https://platform.deepseek.com/" 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-900 border border-slate-800 hover:border-slate-700 text-[11px] text-slate-300 transition active:scale-98 font-medium"
+                      >
+                        <span>DeepSeek Platform</span>
+                        <span className="text-[9px] text-slate-500">platform.deepseek →</span>
+                      </a>
+
+                      <a 
+                        href="https://platform.openai.com/" 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-900 border border-slate-800 hover:border-slate-700 text-[11px] text-slate-300 transition active:scale-98 font-medium"
+                      >
+                        <span>OpenAI Console (GPT-4o / Mini)</span>
+                        <span className="text-[9px] text-slate-500">platform.openai →</span>
+                      </a>
+
+                      <a 
+                        href="https://platform.moonshot.cn/" 
+                        target="_blank" 
+                        rel="noopener noreferrer" 
+                        className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-900 border border-slate-800 hover:border-slate-700 text-[11px] text-slate-300 transition active:scale-98 font-medium"
+                      >
+                        <span>Moonshot Kimi AI</span>
+                        <span className="text-[9px] text-slate-500">platform.moonshot →</span>
+                      </a>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
