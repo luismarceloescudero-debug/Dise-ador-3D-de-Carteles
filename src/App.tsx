@@ -1,0 +1,1581 @@
+import React, { useState } from 'react';
+import { StructureConfig, SelectedComponent3D, MaterialItem, SupplierPreset } from './types';
+import { calculateMaterials, SUPPLIER_PRESETS, PROFILE_DETAILS, calculateStructureWeightAndVols, formatPrice } from './data';
+import ThreeCanvas from './components/ThreeCanvas';
+import PieceDetailViewer from './components/PieceDetailViewer';
+import { BudgetManager } from './components/BudgetManager';
+import { 
+  Building2, 
+  Settings2, 
+  Sparkles, 
+  HelpCircle, 
+  Ruler, 
+  FileSpreadsheet, 
+  Info, 
+  Eye, 
+  EyeOff, 
+  Camera, 
+  Anchor, 
+  CheckCircle2,
+  HardHat,
+  MapPin,
+  Maximize2,
+  TrendingDown,
+  TrendingUp,
+  Scale,
+  Mail
+} from 'lucide-react';
+
+export default function App() {
+  // Main state defining the full architectural design configuration
+  const [config, setConfig] = useState<StructureConfig>({
+    width: 800, // 800 cm (8 meters)
+    height: 300, // 300 cm (3 meters)
+    clearanceHeight: 450, // distance ground to bottom of sign (4.50 meters)
+    gridPattern: 'diagonal_cross', // "San Andrés" default
+    gridRows: 6, // 6 horizontal braces
+    gridCols: 6, // 6 vertical braces
+    marcoProfile: '60x60x2', // "reforzado"
+    skeletonProfile: '40x40x2', // standard solicited
+    chapaProfile: 'chapa_18', // gauge 18 structural sheeting
+    chapaSheetSize: '1.0x2.0', // standard sheet dimension
+    columnProfile: 'tubing_3_1_2', // "muy robusto" Tubing 3 1/2"
+    columnCount: 6, // default 6 support poles
+    columnBuriedDepth: 300, // 300 cm de profundidad (3 meters)
+    foundationWidth: 80, // square concrete base width in cm
+    foundationDepth: 300, // concrete depth matches 300 cm buried depth
+    foundationConcreteGrade: 'H25', // "fuerte" H25
+    anchorBoltDiameter: '7/8', // diameter in inches (reforzado)
+    anchorPlateThickness: 12 // thickness in mm
+  });
+
+  const [selectedComponent, setSelectedComponent] = useState<SelectedComponent3D>('none');
+  const [customSuppliers, setCustomSuppliers] = useState<SupplierPreset[]>(() => {
+    try {
+      const isCleared = localStorage.getItem('billboard_data_cleared') === 'true';
+      if (isCleared) return [];
+      const saved = localStorage.getItem('billboard_custom_suppliers');
+      return saved ? JSON.parse(saved) : SUPPLIER_PRESETS;
+    } catch {
+      return SUPPLIER_PRESETS;
+    }
+  });
+
+  const handleSetCustomSuppliers = (suppliers: SupplierPreset[]) => {
+    setCustomSuppliers(suppliers);
+    try {
+      if (suppliers.length > 0) {
+        localStorage.removeItem('billboard_data_cleared');
+      } else {
+        localStorage.setItem('billboard_data_cleared', 'true');
+      }
+      localStorage.setItem('billboard_custom_suppliers', JSON.stringify(suppliers));
+    } catch (e) {
+      console.error(e);
+    }
+  };
+  const [sidebarTab, setSidebarTab] = useState<'parametros' | 'computo'>('parametros');
+  const [isQuoteCopied, setIsQuoteCopied] = useState(false);
+  const [purchaseStrategy, setPurchaseStrategy] = useState<'optimal' | 'individual' | 'monoproveedor'>('optimal');
+  
+  // Custom states for 3D viewer toggle controls
+  const [showSkeletonTransparent, setShowSkeletonTransparent] = useState(false);
+  const [showSubterranean, setShowSubterranean] = useState(true);
+  const [isARMode, setIsARMode] = useState(false);
+
+  // Define a constant baseline configuration representational of the starter state (8m x 3m standard quoted sign on 6 posts)
+  const BASELINE_CONFIG: StructureConfig = {
+    width: 800,
+    height: 300,
+    clearanceHeight: 400,
+    gridPattern: 'standard',
+    gridRows: 6,
+    gridCols: 6,
+    marcoProfile: '50x50x2',
+    skeletonProfile: '40x40x2',
+    chapaProfile: 'chapa_18',
+    chapaSheetSize: '1.0x2.0',
+    columnProfile: 'tubing_2_7_8',
+    columnCount: 6,
+    columnBuriedDepth: 100,
+    foundationWidth: 80,
+    foundationDepth: 120, // matching buried depth 100 (original baseline design)
+    foundationConcreteGrade: 'H21',
+    anchorBoltDiameter: '3/4',
+    anchorPlateThickness: 12
+  };
+
+  // Calculates totals
+  const currentMaterials = calculateMaterials(config, customSuppliers);
+  const weightsRes = calculateStructureWeightAndVols(config);
+  const totalWeightKg = Math.round(weightsRes.totalStructureWeightKg);
+
+  const isDataCleared = customSuppliers.length === 0;
+
+  // Dynamic Procurement Strategy Optimization
+  // Find the cheapest suppliers for each specialized subclass
+  const tubingKey = config.columnProfile === 'tubing_3_1_2' ? 'tubing3_1_2' : 'tubing2_7_8';
+
+  let bestChasisSupplierObj = customSuppliers[0];
+  let minChasisCost = Infinity;
+
+  // Let's set a healthy default preset fallback first (Chacarita for 3.5" and Cuenca del Sur for 2 7/8")
+  let bestTubingSupplierObj = customSuppliers.find(s => s.id === (config.columnProfile === 'tubing_3_1_2' ? 'chacarita' : 'cuenca_sur')) || customSuppliers[0];
+  let minTubingPrice = Infinity;
+
+  let bestSingleSupplierObj = customSuppliers[0];
+  let minSingleTotal = Infinity;
+
+  if (!isDataCleared) {
+    customSuppliers.forEach(s => {
+      try {
+        const mList = calculateMaterials(config, [s]);
+        
+        // Calculate Chasis, Chapas e Insumos package cost
+        const chasisCost = mList
+          .filter(m => m.id !== 'mat_postes' && m.id !== 'mat_cimentacion')
+          .reduce((sum, m) => sum + m.totalPrice, 0);
+
+        // Save if cheapest
+        if (chasisCost > 0 && chasisCost < minChasisCost) {
+          minChasisCost = chasisCost;
+          bestChasisSupplierObj = s;
+        }
+
+        // Calculate Tubing cost only - MUST check direct non-zero quote to prevent falling back to other suppliers' prices!
+        const val = Number(s[tubingKey]);
+        if (val && val > 0 && val < minTubingPrice) {
+          minTubingPrice = val;
+          bestTubingSupplierObj = s;
+        }
+
+        // Calculate Single total (everything except concrete)
+        const singleTotal = mList
+          .filter(m => m.id !== 'mat_cimentacion')
+          .reduce((sum, m) => sum + m.totalPrice, 0);
+        if (singleTotal > 0 && singleTotal < minSingleTotal) {
+          minSingleTotal = singleTotal;
+          bestSingleSupplierObj = s;
+        }
+      } catch (e) {
+        console.error("Error calculating dynamic suppliers", e);
+      }
+    });
+  }
+
+  // Fallbacks if no valid pricing matched
+  if (!bestChasisSupplierObj && customSuppliers.length > 0) {
+    bestChasisSupplierObj = customSuppliers[0];
+  }
+  if (!bestTubingSupplierObj && customSuppliers.length > 0) {
+    bestTubingSupplierObj = customSuppliers.find(s => s.id === (config.columnProfile === 'tubing_3_1_2' ? 'chacarita' : 'cuenca_sur')) || customSuppliers[0];
+  }
+  if (!bestSingleSupplierObj && customSuppliers.length > 0) {
+    bestSingleSupplierObj = customSuppliers[0];
+  }
+
+  // Define dynamic display suppliers for the header widget:
+  const chasisSupplier = isDataCleared 
+    ? '— (Sin datos)' 
+    : (bestChasisSupplierObj ? bestChasisSupplierObj.name : 'SOLIMET de Grupo Camin S.A.');
+
+  const tubingSupplierLive = isDataCleared 
+    ? '— (Sin datos)' 
+    : (bestTubingSupplierObj ? bestTubingSupplierObj.name : 'Solimet');
+
+  const concreteSupplier = isDataCleared 
+    ? '— (Sin datos)' 
+    : 'HORMISERV SRL (Planta Propia)';
+
+  // Now calculate activeMaterials under chosen purchaseStrategy
+  let activeMaterials: MaterialItem[] = [];
+  if (purchaseStrategy === 'individual' || isDataCleared) {
+    activeMaterials = currentMaterials;
+  } else if (purchaseStrategy === 'optimal') {
+    const chasisMList = calculateMaterials(config, [bestChasisSupplierObj]);
+    const tubingMList = calculateMaterials(config, [bestTubingSupplierObj]);
+    const defaultMList = currentMaterials;
+
+    activeMaterials = defaultMList.map(item => {
+      if (item.id === 'mat_postes') {
+        const match = tubingMList.find(t => t.id === 'mat_postes');
+        return match || item;
+      } else if (item.id === 'mat_cimentacion') {
+        return item; // concrete HORMISERV
+      } else {
+        const match = chasisMList.find(c => c.id === item.id);
+        return match || item;
+      }
+    });
+  } else {
+    // monoproveedor
+    const singleMList = calculateMaterials(config, [bestSingleSupplierObj]);
+    const defaultMList = currentMaterials;
+
+    activeMaterials = defaultMList.map(item => {
+      if (item.id === 'mat_cimentacion') {
+        return item; // concrete HORMISERV
+      } else {
+        const match = singleMList.find(s => s.id === item.id);
+        return match || item;
+      }
+    });
+  }
+
+  const activeSubtotal = activeMaterials.reduce((acc, curr) => acc + curr.totalPrice, 0);
+  const activeGrandTotal = activeSubtotal * 1.21;
+
+  // Baseline materials calculations (using the same supplier)
+  const baselineMaterialsRaw = calculateMaterials(BASELINE_CONFIG, customSuppliers);
+  // Apply any custom pricing from user activeMaterials to baselineMaterials to keep comparison fair
+  const baselineMaterials = baselineMaterialsRaw.map(m => {
+    // Override with EXACT quoted baseline units from user
+    let quantity = 0;
+    if (m.id === 'mat_marco') quantity = 7;
+    else if (m.id === 'mat_skeleton') quantity = 6;
+    else if (m.id === 'mat_postes') quantity = 6;
+    else if (m.id === 'mat_chapa') quantity = 13;
+    else {
+      // Concrete, anchor kit, screws, welding electrodes and paint were not in the original baseline quote
+      quantity = 0;
+    }
+
+    const customMatch = activeMaterials.find(c => c.id === m.id);
+    if (customMatch) {
+      return {
+        ...m,
+        quantity: quantity,
+        unitPrice: customMatch.unitPrice,
+        totalPrice: quantity * customMatch.unitPrice
+      };
+    }
+    return {
+      ...m,
+      quantity: quantity,
+      totalPrice: quantity * m.unitPrice
+    };
+  });
+  const baselineWeights = calculateStructureWeightAndVols(BASELINE_CONFIG);
+  const baselineWeightKg = Math.round(baselineWeights.totalStructureWeightKg);
+
+  const baselineSubtotal = baselineMaterials.reduce((acc, curr) => acc + curr.totalPrice, 0);
+  const baselineGrandTotal = baselineSubtotal * 1.21;
+
+  // Diffs
+  const budgetDiff = activeGrandTotal - baselineGrandTotal;
+  const weightDiff = totalWeightKg - baselineWeightKg;
+
+  const subtotal = currentMaterials.reduce((acc, curr) => acc + curr.totalPrice, 0);
+  const totalIva = subtotal * 0.21;
+  const grandTotal = subtotal + totalIva;
+
+  // Handler for direct component updates from sidebar or 3D clicks
+  const updateConfig = (key: keyof StructureConfig | Partial<StructureConfig>, value?: any) => {
+    setConfig(prev => {
+      let updated: StructureConfig;
+      if (typeof key === 'object') {
+        updated = { ...prev, ...key };
+      } else {
+        updated = { ...prev, [key]: value };
+      }
+      
+      // Auto-validate aspect ratio or dimensions if needed
+      const isWidthChanged = typeof key === 'object' ? 'width' in key : key === 'width';
+      if (isWidthChanged) {
+        const widthVal = typeof key === 'object' ? (key as any).width : value;
+        const widthMeters = Number(widthVal) / 100;
+        // Keep columns count proportional to safeguard structural collapse
+        let colCount = 6;
+        if (widthMeters <= 4) colCount = 3;
+        else if (widthMeters <= 6) colCount = 4;
+        else if (widthMeters <= 9) colCount = 6;
+        else colCount = 8;
+        updated.columnCount = colCount;
+        updated.gridCols = colCount; // match vertical grids line up
+      }
+
+      // Keep concrete foundation depth in sync with column buried depth (structural requirement)
+      const isBuriedChanged = typeof key === 'object' ? 'columnBuriedDepth' in key : key === 'columnBuriedDepth';
+      if (isBuriedChanged) {
+        const buriedVal = typeof key === 'object' ? (key as any).columnBuriedDepth : value;
+        updated.foundationDepth = Number(buriedVal);
+      }
+      
+      return updated;
+    });
+  };
+
+  const selectComponentFrom3D = (part: SelectedComponent3D) => {
+    setSelectedComponent(part);
+    
+    // Auto-scroll to view details tab on mobile if a component gets selected
+    const el = document.getElementById('configurator-controls');
+    if (el && window.innerWidth < 1024) {
+      el.scrollIntoView({ behavior: 'smooth' });
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans antialiased pb-12">
+      {/* Upper Navigation Header */}
+      <header className="border-b border-slate-800 bg-slate-900/80 backdrop-blur-md sticky top-0 z-40 px-4 py-3.5">
+        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
+          
+          {/* Logo / Title Area */}
+          <div className="flex items-center gap-3">
+            <div className="bg-gradient-to-tr from-cyan-500 to-blue-600 p-2.5 rounded-xl shadow-lg ring-1 ring-cyan-400/30">
+              <HardHat className="w-5.5 h-5.5 text-white" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h1 className="text-lg font-black tracking-tight text-white">CONSTRUCAD</h1>
+                <span className="bg-cyan-500/10 text-cyan-400 text-[10px] font-bold px-2 py-0.5 rounded-full border border-cyan-500/20">
+                  v3.2 PRO
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 font-medium">Diseñador 3D de Carteles Publicitarios con Cómputo Real</p>
+            </div>
+          </div>
+
+          {/* Quick Stats Header Bar */}
+          <div className="flex items-center gap-4 text-xs font-semibold overflow-x-auto w-full sm:w-auto justify-end">
+            <div className="bg-slate-800/80 border border-slate-700/50 rounded-lg px-3 py-1.5 flex flex-col shrink-0 min-w-[95px]">
+              <span className="text-[10px] text-slate-400 uppercase tracking-wider">Superficie Total</span>
+              <span className="text-cyan-400 font-mono text-xs font-bold">{(config.width * config.height / 10000).toFixed(1)} m²</span>
+            </div>
+
+            <div className="bg-slate-800/80 border border-slate-700/50 rounded-lg px-3 py-1.5 flex flex-col shrink-0 min-w-[95px]">
+              <span className="text-[10px] text-slate-400 uppercase tracking-wider">Peso Acero Est.</span>
+              <span className="text-indigo-400 font-mono text-xs font-bold">~ {Math.round(totalWeightKg).toLocaleString()} kg</span>
+            </div>
+
+            <div className="bg-slate-800/80 border border-slate-700/50 rounded-lg px-3 py-1.5 flex flex-col shrink-0 min-w-[110px]">
+              <span className="text-[10px] text-slate-400 uppercase tracking-wider">Presupuesto Total</span>
+              <span className="text-emerald-400 font-mono text-xs font-black">
+                {new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(activeGrandTotal)}
+              </span>
+            </div>
+
+            {/* Grouped Supplier optimal recommendations card */}
+            <div className="bg-slate-900 border border-slate-850 rounded-xl p-2.5 flex flex-col shrink-0 min-w-[280px] lg:min-w-[340px] text-[9.5px] gap-1.5 shadow-xl shadow-slate-950/40">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[9px] text-slate-300 uppercase tracking-wider font-extrabold flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 bg-yellow-400 rounded-full animate-pulse" />
+                  Estrategia de Compra
+                </span>
+                
+                {/* Active Strategy Indicator badge */}
+                <span className={`px-1.5 py-0.5 rounded text-[8px] font-bold ${
+                  purchaseStrategy === 'optimal' 
+                    ? 'bg-cyan-500/10 text-cyan-400 border border-cyan-500/20' 
+                    : purchaseStrategy === 'individual'
+                      ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                      : 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20'
+                }`}>
+                  {purchaseStrategy === 'optimal' 
+                    ? 'Óptima (2 Provs)' 
+                    : purchaseStrategy === 'individual'
+                      ? 'Desagregada'
+                      : 'Monoproveedor'}
+                </span>
+              </div>
+
+              {/* Selector Pills */}
+              <div className="grid grid-cols-3 gap-1 bg-slate-950 p-0.5 rounded border border-slate-800">
+                <button 
+                  onClick={() => setPurchaseStrategy('optimal')}
+                  className={`py-1 rounded text-[8px] font-bold transition-all ${
+                    purchaseStrategy === 'optimal' 
+                      ? 'bg-slate-800 text-cyan-400 shadow-sm border border-slate-705 border-slate-700/60' 
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                  title="Chasis y herrería agrupados según mejor cotización; Tubing al especialista; Hormiserv para cimientos"
+                >
+                  🚀 Óptima (Sugerida)
+                </button>
+                <button 
+                  onClick={() => setPurchaseStrategy('individual')}
+                  className={`py-1 rounded text-[8px] font-bold transition-all ${
+                    purchaseStrategy === 'individual' 
+                      ? 'bg-slate-800 text-amber-400 shadow-sm border border-slate-705 border-slate-700/60' 
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                  title="Fracciona la compra ítem por ítem buscando el precio unitario más bajo en cualquier corralón"
+                >
+                  🛒 Desagregada
+                </button>
+                <button 
+                  onClick={() => setPurchaseStrategy('monoproveedor')}
+                  className={`py-1 rounded text-[8px] font-bold transition-all ${
+                    purchaseStrategy === 'monoproveedor' 
+                      ? 'bg-slate-800 text-indigo-405 text-indigo-400 shadow-sm border border-slate-705 border-slate-700/60' 
+                      : 'text-slate-400 hover:text-slate-200'
+                  }`}
+                  title="Compra toda la herrería, placas y revestimientos a un único distribuidor para simplificar fletes"
+                >
+                  🏢 Monoprov.
+                </button>
+              </div>
+
+              <div className="flex flex-col gap-0.5 text-[8.5px] leading-tight text-slate-300 font-medium">
+                <div className="flex justify-between gap-2 border-b border-slate-800/40 pb-0.5">
+                  <span className="text-slate-400">Chasis, Chapas e Insumos:</span>
+                  <span className="font-bold text-cyan-300 truncate max-w-[150px]" title={chasisSupplier}>{chasisSupplier}</span>
+                </div>
+                <div className="flex justify-between gap-2 border-b border-slate-800/40 pb-0.5">
+                  <span className="text-slate-400">Postes Tubing:</span>
+                  <span className="font-bold text-amber-300 truncate max-w-[150px]" title={tubingSupplierLive}>{tubingSupplierLive}</span>
+                </div>
+                <div className="flex justify-between gap-2">
+                  <span className="text-slate-400">Bases Hormigón:</span>
+                  <span className="font-bold text-emerald-300 truncate max-w-[150px]" title={concreteSupplier}>{concreteSupplier}</span>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </header>
+
+      {/* Main Container */}
+      <main className="max-w-7xl mx-auto px-4 mt-6 space-y-6">
+        
+        {/* Upper Layout Columns: 3D interactive stage + Quick Control Sidebar */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          
+          {/* LEFT PANEL: The 3D Engine Frame & Viewer Filters */}
+          <div className="lg:col-span-8 flex flex-col gap-4">
+            
+            <div className="bg-slate-900 rounded-2xl p-4 border border-slate-800/60 shadow-xl flex flex-col gap-4">
+              
+              {/* Filter controls layer */}
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <span className="w-2.5 h-2.5 bg-cyan-500 rounded-full animate-ping" />
+                  <h2 className="text-sm font-bold text-slate-200">Simulación Espacial Tridimensional Interactiva</h2>
+                </div>
+                
+                {/* Visualizer toggles */}
+                <div className="flex flex-wrap items-center gap-1.5 bg-slate-800 p-1 rounded-lg">
+                  <button
+                    onClick={() => setShowSkeletonTransparent(!showSkeletonTransparent)}
+                    className={`px-2.5 py-1 text-[11px] font-semibold rounded flex items-center gap-1.5 transition-colors ${
+                      showSkeletonTransparent 
+                        ? 'bg-cyan-600 text-white' 
+                        : 'text-slate-400 hover:text-slate-100'
+                    }`}
+                    title="Permite ver las barras estructurales internas haciendo la chapa semitransparente"
+                  >
+                    <span>Transparencia:</span>
+                    <span className="font-mono text-[10px]">{showSkeletonTransparent ? 'ON' : 'OFF'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => setShowSubterranean(!showSubterranean)}
+                    className={`px-2.5 py-1 text-[11px] font-semibold rounded flex items-center gap-1.5 transition-colors ${
+                      showSubterranean 
+                        ? 'bg-amber-600 text-white' 
+                        : 'text-slate-400 hover:text-slate-100'
+                    }`}
+                    title="Muestra el pozo de hormigón y bloque de cimientos enterrados"
+                  >
+                    <span>Cimientos Subterráneos:</span>
+                    <span className="font-mono text-[10px]">{showSubterranean ? 'SÍ' : 'NO'}</span>
+                  </button>
+
+                  <button
+                    onClick={() => setIsARMode(!isARMode)}
+                    className={`px-2.5 py-1 text-[11px] font-semibold rounded flex items-center gap-1.5 transition-colors ${
+                      isARMode 
+                        ? 'bg-indigo-600 text-white' 
+                        : 'text-slate-400 hover:text-slate-100'
+                    }`}
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                    <span>Modo Realidad Aumentada (RA):</span>
+                    <span className="font-mono text-[10px]">{isARMode ? 'ON' : 'OFF'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* THREEJS CANVAS EMBED */}
+              <ThreeCanvas
+                config={config}
+                selectedComponent={selectedComponent}
+                onSelectComponent={selectComponentFrom3D}
+                showSkeletonTransparent={showSkeletonTransparent}
+                showSubterranean={showSubterranean}
+                isARMode={isARMode}
+              />
+              
+              {/* COMPONENT SPECIFICATION POPUP (HIGH CONTRAST / TO IMPROVE ACCESSIBILITY AND COMPREHENSIVE DETAIL DISPLAY) */}
+              {selectedComponent !== 'none' && (
+                <div className="bg-slate-900 border-2 border-cyan-400 rounded-2xl p-5 space-y-4 shadow-2xl animate-fade-in text-white transition-all">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                    <div className="flex items-center gap-2">
+                      <span className="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse shrink-0" />
+                      <h3 className="text-xs font-black tracking-wider uppercase text-cyan-400">
+                        Especificaciones del Elemento Seleccionado en 3D
+                      </h3>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => selectComponentFrom3D('none')}
+                      className="text-[10px] text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 px-2 py-0.5 rounded cursor-pointer transition-all uppercase font-medium"
+                    >
+                      Cerrar indicación ✕
+                    </button>
+                  </div>
+
+                  {selectedComponent === 'columns' && (() => {
+                    const colDetails = PROFILE_DETAILS.columns.find(col => col.value === config.columnProfile) || PROFILE_DETAILS.columns[0];
+                    const postLength = (config.clearanceHeight + config.height / 2 + config.columnBuriedDepth) / 100;
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+                        <div className="space-y-1.5">
+                          <h4 className="text-sm font-black text-white flex items-center gap-1.5">
+                            <span className="text-cyan-400">🪵</span> Postes de Soporte Tubing
+                          </h4>
+                          <p className="text-[11.5px] text-slate-300 leading-snug">
+                            Columnas maestras de acero de pozo sin costura (re-aprovechamiento de rezago petrolero muy grueso). Constituyen las columnas estructurales principales verticales enterradas en bases de hormigón.
+                          </p>
+                          <div className="bg-slate-950/80 p-2.5 rounded-xl border border-slate-800 space-y-1 text-xs">
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Perfil:</span>
+                              <span className="font-bold text-white font-mono">{colDetails.label}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Largo Total Postes:</span>
+                              <span className="font-bold text-cyan-400 font-mono">{postLength.toFixed(2)} m</span>
+                            </div>
+                            <div className="flex justify-between border-t border-slate-900 pt-1 mt-1">
+                              <span className="text-slate-500 font-medium whitespace-nowrap">↳ Altura Libre (Luz de suelo):</span>
+                              <span className="font-bold text-slate-300 font-mono">{(config.clearanceHeight / 100).toFixed(2)} m</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-500 font-medium whitespace-nowrap">↳ Tramo dentro del Cartel:</span>
+                              <span className="font-bold text-slate-300 font-mono">{(config.height / 200).toFixed(2)} m</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-500 font-medium whitespace-nowrap">↳ Tramo Subterráneo:</span>
+                              <span className="font-bold text-slate-300 font-mono">{(config.columnBuriedDepth / 100).toFixed(2)} m</span>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                            <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800/80">
+                              <span className="block text-[8px] uppercase tracking-wider text-slate-400 font-black">Cantidad total</span>
+                              <span className="text-sm font-extrabold text-cyan-400 font-mono">{config.columnCount} u</span>
+                            </div>
+                            <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800/80">
+                              <span className="block text-[8px] uppercase tracking-wider text-slate-405 font-black">Peso estimado</span>
+                              <span className="text-sm font-extrabold text-indigo-400 font-mono">~{Math.round(weightsRes.columnsWeightKg)} kg</span>
+                            </div>
+                          </div>
+                          
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const el = document.getElementById('detalle-piezas-panel');
+                              if (el) el.scrollIntoView({ behavior: 'smooth' });
+                            }}
+                            className="w-full py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black text-[10.5px] rounded-xl uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-1 cursor-pointer border-none"
+                          >
+                            <span>Ver ficha de cortes tubing y anclaje abajo ↓</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {selectedComponent === 'marco' && (() => {
+                    const marcoDetails = PROFILE_DETAILS.marco.find(m => m.value === config.marcoProfile) || PROFILE_DETAILS.marco[0];
+                    const perimeter = (2 * config.width + 2 * config.height) / 100;
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+                        <div className="space-y-1.5">
+                          <h4 className="text-sm font-black text-white flex items-center gap-1.5">
+                            <span className="text-cyan-400">🖼️</span> Marco Estructural Externo
+                          </h4>
+                          <p className="text-[11.5px] text-slate-300 leading-snug">
+                            Bastidor perimetral externo donde se asienta y fija el entramado de chapa. Brinda la rigidez de contorno indispensable para evitar flexiones mecánicas.
+                          </p>
+                          <div className="bg-slate-950/80 p-2.5 rounded-xl border border-slate-800 space-y-1 text-xs">
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Perfil requerido:</span>
+                              <span className="font-bold text-white font-mono">{marcoDetails.label}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Ancho x Alto:</span>
+                              <span className="font-bold text-cyan-400 font-mono">{(config.width / 100).toFixed(2)}m x {(config.height / 100).toFixed(2)}m</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Metros de perfil lineal:</span>
+                              <span className="font-bold text-white font-mono">{perimeter.toFixed(2)} m</span>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                            <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800/80">
+                              <span className="block text-[8px] uppercase tracking-wider text-slate-400 font-black">Barras de 6m</span>
+                              <span className="text-sm font-extrabold text-cyan-400 font-mono">
+                                {Math.ceil(perimeter / 6)} u
+                              </span>
+                            </div>
+                            <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800/80">
+                              <span className="block text-[8px] uppercase tracking-wider text-slate-405 font-black">Peso estimado</span>
+                              <span className="text-sm font-extrabold text-indigo-400 font-mono">~{Math.round(weightsRes.marcoWeightKg)} kg</span>
+                            </div>
+                          </div>
+                          
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const el = document.getElementById('detalle-piezas-panel');
+                              if (el) el.scrollIntoView({ behavior: 'smooth' });
+                            }}
+                            className="w-full py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black text-[10.5px] rounded-xl uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-1 cursor-pointer border-none"
+                          >
+                            <span>Ver Ficha de Materiales abajo ↓</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {selectedComponent === 'skeleton' && (() => {
+                    const skDetails = PROFILE_DETAILS.skeleton.find(s => s.value === config.skeletonProfile) || PROFILE_DETAILS.skeleton[0];
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+                        <div className="space-y-1.5">
+                          <h4 className="text-sm font-black text-white flex items-center gap-1.5">
+                            <span className="text-cyan-400">🕸️</span> Esqueleto Interior (Grilla)
+                          </h4>
+                          <p className="text-[11.5px] text-slate-300 leading-snug">
+                            Entramado estructural de reparto interior soldado. Impide el flameo y la fatiga de las chapas frontales frente a la succión de vientos cruzados.
+                          </p>
+                          <div className="bg-slate-950/80 p-2.5 rounded-xl border border-slate-800 space-y-1 text-xs">
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Perfil:</span>
+                              <span className="font-bold text-white font-mono">{skDetails.label}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Patrón de Grilla:</span>
+                              <span className="font-bold text-cyan-400 font-mono capitalize">{config.gridPattern}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Metros de perfil lineal:</span>
+                              <span className="font-bold text-white font-mono">{weightsRes.skeletonLinearMeters.toFixed(2)} m</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Disposición estructural:</span>
+                              <span className="font-bold text-slate-300 font-mono">{config.gridRows - 2} horiz. x {config.gridCols - 2} vert.</span>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                            <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800/80">
+                              <span className="block text-[8px] uppercase tracking-wider text-slate-400 font-black">Barras de 6m</span>
+                              <span className="text-sm font-extrabold text-cyan-400 font-mono">
+                                {Math.ceil(weightsRes.skeletonLinearMeters / 6)} u
+                              </span>
+                            </div>
+                            <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800/80">
+                              <span className="block text-[8px] uppercase tracking-wider text-slate-405 font-black">Peso estimado</span>
+                              <span className="text-sm font-extrabold text-indigo-400 font-mono">~{Math.round(weightsRes.skeletonWeightKg)} kg</span>
+                            </div>
+                          </div>
+                          
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const el = document.getElementById('detalle-piezas-panel');
+                              if (el) el.scrollIntoView({ behavior: 'smooth' });
+                            }}
+                            className="w-full py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black text-[10.5px] rounded-xl uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-1 cursor-pointer border-none"
+                          >
+                            <span>Ver Detalle de Grilla abajo ↓</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {selectedComponent === 'chapa' && (() => {
+                    const textCh = PROFILE_DETAILS.chapa.find(c => c.value === config.chapaProfile) || PROFILE_DETAILS.chapa[0];
+                    const numChapas = activeMaterials.find(m => m.id === 'mat_chapa')?.quantity || 0;
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+                        <div className="space-y-1.5">
+                          <h4 className="text-sm font-black text-white flex items-center gap-1.5">
+                            <span className="text-cyan-400">💿</span> Chapas Lisas Revestimiento
+                          </h4>
+                          <p className="text-[11.5px] text-slate-300 leading-snug">
+                            Placas de revestimiento de acero galvanizado calibre industrial BWG 18. Son las encargadas de conformar el plano frontal liso y limpio ideal para rotulación publicitaria de alta adherencia.
+                          </p>
+                          <div className="bg-slate-950/80 p-2.5 rounded-xl border border-slate-805 space-y-1 text-xs">
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Calibre de Chapa:</span>
+                              <span className="font-bold text-white font-mono">{textCh.label}</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Espesor real:</span>
+                              <span className="font-bold text-cyan-400 font-mono">1.25 mm (Nº 18)</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Medida por Pliego:</span>
+                              <span className="font-bold text-slate-300 font-mono">
+                                {config.chapaSheetSize === '1.0x2.0' ? '1.00m x 2.00m' : '1.22m x 2.44m'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Superficie Total:</span>
+                              <span className="font-bold text-white font-mono">{(config.width * config.height / 10000).toFixed(2)} m²</span>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                            <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800/80">
+                              <span className="block text-[8px] uppercase tracking-wider text-slate-405 font-black">Cantidad pliegos</span>
+                              <span className="text-sm font-extrabold text-cyan-400 font-mono">{numChapas} u</span>
+                            </div>
+                            <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800/80">
+                              <span className="block text-[8px] uppercase tracking-wider text-slate-405 font-black">Peso estimado</span>
+                              <span className="text-sm font-extrabold text-indigo-400 font-mono">~{Math.round(weightsRes.chapaWeightKg)} kg</span>
+                            </div>
+                          </div>
+                          
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const el = document.getElementById('detalle-piezas-panel');
+                              if (el) el.scrollIntoView({ behavior: 'smooth' });
+                            }}
+                            className="w-full py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black text-[10.5px] rounded-xl uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-1 cursor-pointer border-none"
+                          >
+                            <span>Ver Modulaciones de Chapa abajo ↓</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {selectedComponent === 'foundation' && (() => {
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+                        <div className="space-y-1.5">
+                          <h4 className="text-sm font-black text-white flex items-center gap-1.5">
+                            <span className="text-cyan-400">🧱</span> Cimentación: Pozos de Hormigón
+                          </h4>
+                          <p className="text-[11.5px] text-slate-300 leading-snug">
+                            Bases pesadas ejecutadas in-situ. El contrapeso y masa del hormigón impide físicamente el vuelco por momentos de empuje de viento en el cartel. Producido por nuestra planta de hormigón.
+                          </p>
+                          <div className="bg-slate-950/80 p-2.5 rounded-xl border border-slate-805 space-y-1 text-xs">
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Hormigón elaborado:</span>
+                              <span className="font-bold text-cyan-400 font-mono">Clase H-{config.foundationConcreteGrade.toUpperCase().replace('H', '')} Estructural</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Planta Logística:</span>
+                              <span className="font-bold text-amber-400 font-sans">HORMISERV SRL (Planta Propia)</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Pozos e:</span>
+                              <span className="font-bold text-white font-mono">{config.columnCount} bases individuales</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Sección x Profundidad:</span>
+                              <span className="font-bold text-slate-300 font-mono">{config.foundationWidth}x{config.foundationWidth} cm (Ancho) x {config.foundationDepth} cm (Profundidad)</span>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                            <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800/80">
+                              <span className="block text-[8px] uppercase tracking-wider text-slate-405 font-black">Volumen hormigón</span>
+                              <span className="text-sm font-extrabold text-cyan-400 font-mono">{weightsRes.totalConcreteVolumeM3.toFixed(2)} m³</span>
+                            </div>
+                            <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800/80">
+                              <span className="block text-[8px] uppercase tracking-wider text-slate-405 font-black">Masa zapata total</span>
+                              <span className="text-sm font-extrabold text-indigo-400 font-mono">~{Math.round(weightsRes.concreteWeightKg).toLocaleString()} kg</span>
+                            </div>
+                          </div>
+                          
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const el = document.getElementById('detalle-piezas-panel');
+                              if (el) el.scrollIntoView({ behavior: 'smooth' });
+                            }}
+                            className="w-full py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black text-[10.5px] rounded-xl uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-1 cursor-pointer border-none"
+                          >
+                            <span>Ver detalles de cimentación abajo ↓</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {selectedComponent === 'anchors' && (() => {
+                    const basePlateWidth = Math.round(config.foundationWidth * 0.70 * 10);
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
+                        <div className="space-y-1.5">
+                          <h4 className="text-sm font-black text-white flex items-center gap-1.5">
+                            <span className="text-cyan-400">⚓</span> Kit de Anclaje de Viento (Placa + Pernos)
+                          </h4>
+                          <p className="text-[11.5px] text-slate-300 leading-snug">
+                            Kit de rigidez soldada e inserto. Combina una placa de gran espesor, espárragos tipo J-Bolt de gran diámetro y escuadras triangulares de refuerzo para impedir el vuelco y la fatiga por fluencia cíclica (viento Zonda).
+                          </p>
+                          <div className="bg-slate-950/80 p-2.5 rounded-xl border border-slate-850 space-y-1 text-xs">
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Placas Base:</span>
+                              <span className="font-bold text-white font-mono">{config.columnCount} placas de {basePlateWidth}x{basePlateWidth} mm x {config.anchorPlateThickness}mm</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Escuadras Triangulares:</span>
+                              <span className="font-bold text-cyan-400 font-mono">{config.columnCount * 4} escuadras de refuerzo (9.5mm / 3/8")</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span className="text-slate-400">Pernos de Anclaje:</span>
+                              <span className="font-bold text-white font-mono">{config.columnCount * 4} pernos J-Bolt Ø {config.anchorBoltDiameter}" x 500 mm</span>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-3">
+                          <div className="grid grid-cols-2 gap-2 text-center text-xs">
+                            <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800/80">
+                              <span className="block text-[8px] uppercase tracking-wider text-slate-405 font-black">Placas de base</span>
+                              <span className="text-sm font-extrabold text-cyan-400 font-mono">{config.columnCount} u ({config.anchorPlateThickness}mm)</span>
+                            </div>
+                            <div className="bg-slate-950/80 p-3 rounded-xl border border-slate-800/80">
+                              <span className="block text-[8px] uppercase tracking-wider text-slate-450 font-black">Escuadras soldar</span>
+                              <span className="text-sm font-extrabold text-indigo-400 font-mono">{config.columnCount * 4} u</span>
+                            </div>
+                          </div>
+                          
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const el = document.getElementById('detalle-piezas-panel');
+                              if (el) el.scrollIntoView({ behavior: 'smooth' });
+                            }}
+                            className="w-full py-2 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white font-black text-[10.5px] rounded-xl uppercase tracking-wider transition-all shadow-md flex items-center justify-center gap-1 cursor-pointer border-none"
+                          >
+                            <span>Generar Plantilla de Pedido abajo ↓</span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                </div>
+              )}
+
+              {/* Instructions on AR or camera */}
+              <div className="p-3 bg-slate-950/60 rounded-xl border border-slate-800 text-[11px] text-slate-400 leading-relaxed flex items-start gap-2.5">
+                <Info className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-semibold text-slate-200">Herramientas de navegación 3D:</p>
+                  <p>Mantén presionado el <strong>Click Izquierdo</strong> para rotar el cartel. Mantén presionado el <strong>Click Derecho / Dos dedos</strong> para arrastrar la cámara. Usa la <strong>Rueda de ratón / Pellizcar</strong> para hacer Zoom.</p>
+                </div>
+              </div>
+
+            </div>
+
+          </div>
+
+          {/* RIGHT PANEL: Live Parameter Editor Sidebar */}
+          <div className="lg:col-span-4 flex flex-col gap-6" id="configurator-controls">
+            
+            <div className="bg-slate-900 rounded-2xl p-5 border border-slate-800/60 shadow-xl space-y-5 flex flex-col h-full justify-between">
+              <div>
+                <div className="flex items-center gap-2 pb-4 border-b border-slate-800 mb-4">
+                  <Settings2 className="w-5 h-5 text-cyan-400" />
+                  <h3 className="text-sm font-bold text-slate-200 uppercase tracking-tight">Consola de Edición en Vivo</h3>
+                </div>
+
+                {/* Dynamic Notification of clicked part */}
+                {selectedComponent !== 'none' ? (
+                  <div className="p-3 mb-4 bg-orange-600/10 border border-orange-500/20 rounded-xl text-xs space-y-1 text-slate-300">
+                    <p className="font-bold text-orange-400 flex items-center gap-1">
+                      <Sparkles className="w-3.5 h-3.5" />
+                      Edición Rápida enfocada:
+                    </p>
+                    <p>Focalizado en: <strong className="text-white capitalize">{selectedComponent}</strong>. Haz cambios abajo para verlos reflejados al instante.</p>
+                    <button 
+                      onClick={() => setSelectedComponent('none')}
+                      className="text-[10px] text-cyan-400 underline hover:text-cyan-300 block mt-1"
+                    >
+                      Limpiar enfoque de pieza
+                    </button>
+                  </div>
+                ) : (
+                  <div className="p-3 mb-4 bg-slate-950 rounded-xl text-xs text-slate-400 leading-snug">
+                    💡 <span className="text-slate-200 font-medium">Tip de diseño:</span> Haz click directamente sobre cualquier componente visible del cartel en el render 3D izquierdo para preseleccionar y focalizar su sección.
+                  </div>
+                )}
+
+                {/* Segment tab control to switch between Ajustes parameters and Cómputo comparativo */}
+                <div className="grid grid-cols-2 gap-1 p-1 bg-slate-950 rounded-xl mb-4 text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setSidebarTab('parametros')}
+                    className={`py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all text-center border cursor-pointer ${
+                      sidebarTab === 'parametros'
+                        ? 'bg-slate-800 border-slate-700/80 text-white shadow-sm font-bold'
+                        : 'bg-transparent border-transparent text-slate-400 hover:text-slate-200 font-normal'
+                    }`}
+                  >
+                    <Settings2 className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Ajustes</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSidebarTab('computo')}
+                    className={`py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all text-center border cursor-pointer relative ${
+                      sidebarTab === 'computo'
+                        ? 'bg-slate-800 border-slate-700/80 text-white shadow-sm font-bold'
+                        : 'bg-transparent border-transparent text-slate-400 hover:text-slate-100 font-normal'
+                    }`}
+                  >
+                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>Cómputo en Vivo</span>
+                    {Math.abs(budgetDiff) > 100 && (
+                      <span className="absolute top-1.5 right-2 w-1.5 h-1.5 bg-cyan-500 rounded-full animate-pulse" />
+                    )}
+                  </button>
+                </div>
+
+                {sidebarTab === 'parametros' ? (
+                  <div className="space-y-4 max-h-[440px] overflow-y-auto pr-1">
+                    
+                    {/* Category A: Dimensiones Generales del Cartel */}
+                    <div className="space-y-2.5">
+                      <span className="text-[10px] font-bold text-cyan-400 tracking-wider block uppercase border-l-2 border-cyan-500 pl-2">1. Geometría y Alturas</span>
+                      
+                      {/* Width and Height in CM */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[11px] text-slate-400 mb-1">Ancho (cm):</label>
+                          <input
+                            type="number"
+                            value={config.width}
+                            min="300"
+                            max="1500"
+                            step="50"
+                            onChange={(e) => updateConfig('width', Number(e.target.value))}
+                            className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs focus:ring-1 focus:ring-cyan-500 focus:outline-none"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[11px] text-slate-400 mb-1">Altura (cm):</label>
+                          <input
+                            type="number"
+                            value={config.height}
+                            min="150"
+                            max="600"
+                            step="50"
+                            onChange={(e) => updateConfig('height', Number(e.target.value))}
+                            className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1.5 text-xs focus:ring-1 focus:ring-cyan-500 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Ground clearance Height */}
+                      <div>
+                        <label className="block text-[11px] text-slate-400 mb-1">Altura Libre del Suelo (cm):</label>
+                        <input
+                          type="number"
+                          value={config.clearanceHeight}
+                          min="200"
+                          max="800"
+                          step="50"
+                          onChange={(e) => updateConfig('clearanceHeight', Number(e.target.value))}
+                          className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-cyan-500 focus:outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Category B: Perfiles de Materiales */}
+                    <div className="space-y-3 pt-2">
+                      <span className="text-[10px] font-bold text-violet-400 tracking-wider block uppercase border-l-2 border-violet-500 pl-2">2. Especificación de Perfiles</span>
+
+                      {/* Marco profile dropdown */}
+                      <div className={selectedComponent === 'marco' ? 'ring-1 ring-orange-500 p-1.5 rounded bg-orange-600/5' : ''}>
+                        <label className="block text-[11px] text-slate-400 mb-1 flex items-center justify-between">
+                          <span>Perfil Marco Perimetral:</span>
+                          <span className="text-[9px] text-slate-500 font-mono">Solicitado: 50x50x2</span>
+                        </label>
+                        <select
+                          value={config.marcoProfile}
+                          onChange={(e) => updateConfig('marcoProfile', e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200 cursor-pointer focus:ring-1 focus:ring-cyan-500 focus:outline-none"
+                        >
+                          {PROFILE_DETAILS.marco.map(o => (
+                            <option key={o.value} value={o.value}>{o.label}</option>
+                          ))}
+                        </select>
+                      </div>
+   
+                       {/* Esqueleto interior grid count & profile */}
+                       <div className={selectedComponent === 'skeleton' ? 'ring-1 ring-orange-500 p-2 rounded bg-orange-600/5 space-y-3' : 'space-y-3'}>
+                         <div>
+                           <label className="block text-[11px] text-slate-400 mb-1 flex items-center justify-between">
+                             <span>Perfil Cuadrícula Esqueleto:</span>
+                             <span className="text-[9px] text-slate-500 font-mono">Solicitado: 40x40x2</span>
+                           </label>
+                           <select
+                             value={config.skeletonProfile}
+                             onChange={(e) => updateConfig('skeletonProfile', e.target.value)}
+                             className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200 cursor-pointer focus:ring-1 focus:ring-cyan-500 focus:outline-none"
+                           >
+                             {PROFILE_DETAILS.skeleton.map(o => (
+                               <option key={o.value} value={o.value}>{o.label}</option>
+                             ))}
+                           </select>
+                         </div>
+                         
+                         {/* Grid internal counts (Rows and Cols without frame) */}
+                         <div className="grid grid-cols-2 gap-2">
+                           <div>
+                             <label className="block text-[9.5px] text-slate-400 font-medium">Caños Horiz. (sin marco):</label>
+                             <input
+                               type="number"
+                               value={config.gridRows - 2}
+                               min="0"
+                               max="12"
+                               onChange={(e) => updateConfig('gridRows', Math.max(0, Number(e.target.value)) + 2)}
+                               className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-xs focus:ring-1 focus:ring-cyan-500 text-slate-200"
+                             />
+                             <p className="text-[8.5px] text-slate-500 mt-0.5">({config.gridRows - 2} internos + 2 marco = {config.gridRows} totales)</p>
+                           </div>
+                           <div>
+                             <label className="block text-[9.5px] text-slate-400 font-medium">Caños Vert. (sin marco):</label>
+                             <input
+                               type="number"
+                               value={config.gridCols - 2}
+                               min="0"
+                               max="12"
+                               onChange={(e) => updateConfig('gridCols', Math.max(0, Number(e.target.value)) + 2)}
+                               className="w-full bg-slate-950 border border-slate-800 rounded px-2.5 py-1 text-xs focus:ring-1 focus:ring-cyan-500 text-slate-200"
+                             />
+                             <p className="text-[8.5px] text-slate-500 mt-0.5">({config.gridCols - 2} internos + 2 marco = {config.gridCols} totales)</p>
+                           </div>
+                         </div>
+   
+                         {/* Wind structural grid spacing template options grouped under Esqueleto */}
+                         <div className="pt-1.5 border-t border-slate-800/40">
+                           <label className="block text-[10px] text-slate-400 mb-1 font-semibold uppercase tracking-wider">Diseño Esqueleto Bracing:</label>
+                           <div className="grid grid-cols-3 gap-1">
+                             {[
+                               { val: 'standard', label: 'Estándar' },
+                               { val: 'double_reinforcement', label: 'Doble' },
+                               { val: 'diagonal_cross', label: 'San Andrés' }
+                             ].map((p) => (
+                               <button
+                                 key={p.val}
+                                 type="button"
+                                 onClick={() => updateConfig('gridPattern', p.val)}
+                                 className={`py-1 px-1.5 text-center rounded text-[9px] border font-bold truncate cursor-pointer ${
+                                   config.gridPattern === p.val
+                                     ? 'bg-indigo-600/30 border-indigo-500 text-indigo-300'
+                                     : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                                 }`}
+                               >
+                                 {p.label}
+                               </button>
+                             ))}
+                           </div>
+                         </div>
+
+                  </div>
+                       {/* Chapa Coverage properties */}
+                      <div className={selectedComponent === 'chapa' ? 'ring-1 ring-orange-500 p-1.5 rounded bg-orange-600/5' : ''}>
+                        <label className="block text-[11px] text-slate-400 mb-1">Revestimiento Chapa Frontal:</label>
+                        <select
+                          value={config.chapaProfile}
+                          onChange={(e) => updateConfig('chapaProfile', e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200 cursor-pointer focus:outline-none"
+                        >
+                          {PROFILE_DETAILS.chapa.map(o => (
+                            <option key={o.value} value={o.value}>{o.label}</option>
+                          ))}
+                        </select>
+
+                        <div className="mt-1.5">
+                          <label className="block text-[9.5px] text-slate-500 mb-0.5">Tamaño de Placa Chapa:</label>
+                          <select
+                            value={config.chapaSheetSize}
+                            onChange={(e) => updateConfig('chapaSheetSize', e.target.value)}
+                            className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[10px] text-slate-300 cursor-pointer"
+                          >
+                            <option value="1.0x2.0">Placa Estándar Siderchap (1.00m x 2.00m)</option>
+                            <option value="1.22x2.44">Placa Mayor Maldonado (1.22m x 2.44m)</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* Columns Postes / Tubing structure variables */}
+                      <div className={selectedComponent === 'columns' ? 'ring-1 ring-orange-500 p-1.5 rounded bg-orange-600/5' : ''}>
+                        <span className="text-[10px] font-bold text-amber-400 tracking-wider block uppercase border-l-2 border-amber-500 pl-2 mt-4 mb-2">3. Postes y Cimentación</span>
+                        
+                        <label className="block text-[11px] text-slate-400 mb-1 flex items-center justify-between">
+                          <span>Perfil de Soporte principal:</span>
+                          <span className="text-[9px] text-slate-500 font-mono">6 caños Tubing 2 7/8&quot;</span>
+                        </label>
+                        <select
+                          value={config.columnProfile}
+                          onChange={(e) => updateConfig('columnProfile', e.target.value)}
+                          className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs text-slate-200 cursor-pointer focus:outline-none"
+                        >
+                          {PROFILE_DETAILS.columns.map(o => (
+                            <option key={o.value} value={o.value}>{o.label}</option>
+                          ))}
+                        </select>
+
+                        <div className="grid grid-cols-2 gap-2 mt-2">
+                          <div>
+                            <label className="block text-[9.5px] text-slate-500">Cantidad Canos:</label>
+                            <input
+                              type="number"
+                              value={config.columnCount}
+                              min="2"
+                              max="10"
+                              onChange={(e) => updateConfig('columnCount', Number(e.target.value))}
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs focus:ring-1"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[9.5px] text-slate-500">Profundidad (cm):</label>
+                            <input
+                              type="number"
+                              value={config.columnBuriedDepth}
+                              min="50"
+                              max="450"
+                              step="10"
+                              onChange={(e) => updateConfig('columnBuriedDepth', Number(e.target.value))}
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs focus:ring-1"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Anchor Diameter & Base blocks */}
+                      <div className={selectedComponent === 'foundation' || selectedComponent === 'anchors' ? 'ring-1 ring-orange-500 p-1.5 rounded bg-orange-600/5' : ''}>
+                        <div className="grid grid-cols-2 gap-2 mt-2">
+                          <div>
+                            <label className="block text-[9.5px] text-slate-500">Hormigón Base:</label>
+                            <select
+                              value={config.foundationConcreteGrade}
+                              onChange={(e) => updateConfig('foundationConcreteGrade', e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[11px] text-slate-200"
+                            >
+                              <option value="H15">H15 (Baja)</option>
+                              <option value="H21">H21 (Normativo)</option>
+                              <option value="H25">H25 (Fuerte)</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[9.5px] text-slate-500">Ancho Base (cm):</label>
+                            <input
+                              type="number"
+                              value={config.foundationWidth}
+                              min="50"
+                              max="200"
+                              step="10"
+                              onChange={(e) => updateConfig('foundationWidth', Number(e.target.value))}
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs focus:ring-1 text-slate-200"
+                            />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 mt-2">
+                          <div>
+                            <label className="block text-[9.5px] text-slate-500">Anclaje Perno Ø:</label>
+                            <select
+                              value={config.anchorBoltDiameter}
+                              onChange={(e) => updateConfig('anchorBoltDiameter', e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-[11px] text-slate-200"
+                            >
+                              <option value="5/8">5/8&quot; (Fino)</option>
+                              <option value="3/4">3/4&quot; (Solicitado)</option>
+                              <option value="7/8">7/8&quot; (Robusto)</option>
+                              <option value="1">1&quot; (Extremo)</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-[9.5px] text-slate-500">Espesor Placa (mm):</label>
+                            <input
+                              type="number"
+                              value={config.anchorPlateThickness}
+                              min="8"
+                              max="32"
+                              step="2"
+                              onChange={(e) => updateConfig('anchorPlateThickness', Number(e.target.value))}
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs focus:ring-1 text-slate-200"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                    </div>
+
+                  </div>
+                ) : (
+                  <div className="space-y-4 max-h-[440px] overflow-y-auto pr-1">
+                    
+                    <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800/80 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[9px] text-slate-400 uppercase tracking-wider font-bold">Desvío de Presupuesto</span>
+                        {budgetDiff > 100 ? (
+                          <span className="bg-rose-500/10 text-rose-400 border border-rose-500/20 text-[9px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0 bg-rose-955/20">
+                            <TrendingUp className="w-3 h-3 text-rose-400" />
+                            <span>+{((budgetDiff / baselineGrandTotal) * 100).toFixed(1)}% vs Base</span>
+                          </span>
+                        ) : budgetDiff < -100 ? (
+                          <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[9px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0 bg-emerald-955/20">
+                            <TrendingDown className="w-3 h-3 text-emerald-400" />
+                            <span>{((budgetDiff / baselineGrandTotal) * 100).toFixed(1)}% (Ahorro)</span>
+                          </span>
+                        ) : (
+                          <span className="bg-slate-800 text-slate-400 text-[9px] font-bold px-2 py-0.5 rounded-full shrink-0">
+                            Sin desvío
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="flex items-baseline justify-between border-b border-slate-800/60 pb-2">
+                        <span className="text-xs text-slate-300 font-medium">Presupuesto Nuevo:</span>
+                        <span className="font-mono text-base font-black text-emerald-400">
+                          {formatPrice(activeGrandTotal)}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-2 text-[10px] pt-0.5">
+                        <div className="bg-slate-900/40 p-2 rounded border border-slate-800/30">
+                          <span className="block text-[8px] text-slate-500 uppercase font-semibold mb-0.5">Base (8x3m)</span>
+                          <span className="font-mono font-bold text-slate-300">{formatPrice(baselineGrandTotal)}</span>
+                        </div>
+                        <div className="bg-slate-900/40 p-2 rounded border border-slate-800/30">
+                          <span className="block text-[8px] text-slate-500 uppercase font-semibold mb-0.5">Diferencia</span>
+                          <span className={`font-mono font-bold ${budgetDiff > 100 ? 'text-rose-400' : budgetDiff < -100 ? 'text-emerald-400' : 'text-slate-400'}`}>
+                            {budgetDiff > 100 ? `+${formatPrice(budgetDiff)}` : budgetDiff < -105 ? `-${formatPrice(Math.abs(budgetDiff))}` : '$0'}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between text-[10px] bg-slate-900/40 px-2 py-1.5 rounded border border-slate-800/20">
+                        <span className="text-slate-400 flex items-center gap-1">
+                          <Scale className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                          <span>Peso Estructural:</span>
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <span className="font-mono font-bold text-indigo-400">~{totalWeightKg.toLocaleString()} kg</span>
+                          {weightDiff !== 0 && (
+                            <span className={`font-mono text-[9px] ${weightDiff > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
+                              ({weightDiff > 0 ? `+${weightDiff}` : weightDiff} kg)
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2 pb-1">
+                      <span className="text-[9px] font-extrabold text-slate-400 tracking-wider block uppercase pl-1">Consumo de Materiales vs Cotizado:</span>
+                      
+                      {activeMaterials.map(item => {
+                        const baselineItem = baselineMaterials.find(b => b.id === item.id);
+                        const baselineItemIdx = baselineItem ? baselineItem.quantity : 0;
+                        const isUnquoted = baselineItemIdx === 0;
+                        const qtyDiff = isUnquoted ? -item.quantity : (item.quantity - baselineItemIdx);
+                        
+                        const getCatNameEs = (cat: string) => {
+                          switch(cat) {
+                            case 'marco': return 'Marco Outer';
+                            case 'skeleton': return 'Esqueleto Internal';
+                            case 'chapa': return 'Chapa Cubierta';
+                            case 'postes': return 'Postes Tubing';
+                            case 'cimentacion': return 'Base Cemento';
+                            case 'anclajes': return 'Placas / Pernos';
+                            default: return cat;
+                          }
+                        };
+                        
+                        return (
+                          <div key={item.id} className="bg-slate-950/40 p-2.5 rounded-xl border border-slate-800/40 space-y-2 hover:border-slate-800 transition-all">
+                            <div className="flex items-center justify-between text-[11px] font-bold border-b border-slate-900 pb-1">
+                              <span className="text-slate-200 truncate pr-2 max-w-[155px]" title={item.name}>{item.name}</span>
+                              <span className="text-slate-500 text-[8.5px] font-semibold shrink-0 uppercase tracking-wide">
+                                {getCatNameEs(item.category)}
+                              </span>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-1.5 text-center text-[9px]">
+                              <div className="bg-slate-900/60 py-1 px-1 rounded border border-slate-800/20">
+                                <span className="block text-[7.5px] text-slate-500 font-semibold uppercase">Actual</span>
+                                <span className="font-mono font-bold text-slate-200">{item.quantity} {item.unit}</span>
+                              </div>
+                              <div className="bg-slate-900/60 py-1 px-1 rounded border border-slate-800/20">
+                                <span className="block text-[7.5px] text-slate-500 font-semibold uppercase font-normal text-slate-405">Cotizado</span>
+                                <span className="font-mono font-bold text-slate-400">
+                                  {baselineItemIdx} {item.unit}
+                                </span>
+                              </div>
+                              <div className={`py-1 px-1 rounded border font-bold ${
+                                isUnquoted
+                                  ? 'bg-rose-950/20 border-rose-900/30 text-rose-400'
+                                  : qtyDiff > 0 
+                                    ? 'bg-rose-950/15 border-rose-900/30 text-rose-400' 
+                                    : qtyDiff < 0 
+                                      ? 'bg-emerald-950/15 border-emerald-900/30 text-emerald-400'
+                                      : 'bg-slate-900/40 border-slate-800/20 text-slate-500'
+                              }`}>
+                                <span className="block text-[7.5px] text-slate-500 font-semibold uppercase font-normal">Variación</span>
+                                <span className="font-mono">
+                                  {isUnquoted ? (
+                                    <span>-{item.quantity}</span>
+                                  ) : qtyDiff > 0 ? (
+                                    `+${qtyDiff}`
+                                  ) : qtyDiff < 0 ? (
+                                    `${qtyDiff}`
+                                  ) : (
+                                    '0'
+                                  )} {item.unit}
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex justify-between items-center text-[9.5px] text-slate-400 pt-0.5">
+                              <span>Subtotal actual:</span>
+                              <span className="font-mono font-bold text-slate-200">{formatPrice(item.totalPrice)}</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Pedido de Cotización Card for Unquoted Missing Materials & Increments */}
+                    {(() => {
+                      const unquotedMaterials = activeMaterials.map(m => {
+                        const baselineItem = baselineMaterials.find(b => b.id === m.id);
+                        let baselineQty = baselineItem ? baselineItem.quantity : 0;
+
+                        // Check if the profile of the current configuration differs from the baseline configuration.
+                        // If standard sizes change (e.g., Selecting 60x60x2 mm instead of the baseline 50x50x2 mm),
+                        // zero units of this new specific profile were quoted originally.
+                        let isProfileChanged = false;
+                        if (m.id === 'mat_marco' && config.marcoProfile !== BASELINE_CONFIG.marcoProfile) {
+                          isProfileChanged = true;
+                        } else if (m.id === 'mat_skeleton' && config.skeletonProfile !== BASELINE_CONFIG.skeletonProfile) {
+                          isProfileChanged = true;
+                        } else if (m.id === 'mat_chapa' && (config.chapaProfile !== BASELINE_CONFIG.chapaProfile || config.chapaSheetSize !== BASELINE_CONFIG.chapaSheetSize)) {
+                          isProfileChanged = true;
+                        } else if (m.id === 'mat_postes' && config.columnProfile !== BASELINE_CONFIG.columnProfile) {
+                          isProfileChanged = true;
+                        }
+
+                        if (isProfileChanged) {
+                          baselineQty = 0;
+                        }
+
+                        if (baselineQty === 0) {
+                          // Entirely missing category or newly selected unquoted profile size
+                          return { ...m };
+                        } else if (m.quantity > baselineQty) {
+                          // Incremental quantity is missing/additional due to design change!
+                          const extraQty = m.quantity - baselineQty;
+                          return {
+                            ...m,
+                            quantity: extraQty,
+                            totalPrice: extraQty * m.unitPrice,
+                            description: `${m.description} (Adicional requerido por re-diseño: +${extraQty} ${m.unit} sobre las ${baselineQty} cotizadas originalmente en el presupuesto base).`
+                          };
+                        }
+                        return null;
+                      }).filter(Boolean) as MaterialItem[];
+
+                      if (unquotedMaterials.length === 0) return null;
+
+                      return (
+                        <div className="mt-4 pt-3 border-t border-slate-800 space-y-2.5 animate-fade-in">
+                          <div className="bg-slate-900/80 p-3.5 rounded-xl border border-rose-500/20 space-y-2">
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
+                              <h4 className="text-[11px] font-black text-rose-400 uppercase tracking-wide">
+                                Pedido de Cotización (Faltantes)
+                              </h4>
+                            </div>
+                            <p className="text-[10px] text-slate-400 leading-relaxed">
+                              Hay materiales requeridos en el ajuste actual que no fueron cotizados originalmente (Variación es Negativa). Podés generar el pedido de cotización automático para estos faltantes:
+                            </p>
+                            
+                            <div className="bg-slate-950 p-2.5 rounded border border-slate-800 text-[9.5px] font-mono whitespace-pre-wrap leading-relaxed text-cyan-400/90 max-h-[140px] overflow-y-auto w-full">
+                              {generateQuotationText(config, unquotedMaterials)}
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard.writeText(generateQuotationText(config, unquotedMaterials));
+                                setIsQuoteCopied(true);
+                                setTimeout(() => setIsQuoteCopied(false), 2000);
+                              }}
+                              className="w-full py-2 bg-gradient-to-r from-cyan-600/90 to-blue-600/90 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-[10px] rounded-lg tracking-wider uppercase transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
+                            >
+                              {isQuoteCopied ? (
+                                <>
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                                  <span>¡Copiado al Portapapeles!</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Mail className="w-3.5 h-3.5 shrink-0" />
+                                  <span>Copiar Pedido de Cotización</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })()}
+                    
+                  </div>
+                )}
+              </div>
+
+              {/* Reset to initial configuration Button */}
+              <div className="pt-4 border-t border-slate-800 mt-4">
+                <button
+                  onClick={() => setConfig({
+                    width: 800,
+                    height: 300,
+                    clearanceHeight: 400,
+                    gridPattern: 'standard',
+                    gridRows: 6,
+                    gridCols: 6,
+                    marcoProfile: '50x50x2',
+                    skeletonProfile: '40x40x2',
+                    chapaProfile: 'chapa_18',
+                    chapaSheetSize: '1.0x2.0',
+                    columnProfile: 'tubing_2_7_8',
+                    columnCount: 6,
+                    columnBuriedDepth: 100,
+                    foundationWidth: 80,
+                    foundationDepth: 120,
+                    foundationConcreteGrade: 'H21',
+                    anchorBoltDiameter: '3/4',
+                    anchorPlateThickness: 12
+                  })}
+                  className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 hover:text-white rounded-xl font-bold transition-all border border-slate-700/60"
+                >
+                  Restablecer Medidas Estándar (8x3m)
+                </button>
+              </div>
+
+            </div>
+
+          </div>
+
+        </div>
+
+        {/* LOWER SECTION: Technical Blueprints Drafting and Part Details */}
+        <div className="space-y-6">
+          {/* Dynamic Piece Section Detail & Materials Specification (Replaces Blueprint AutoCAD drawings) */}
+          <PieceDetailViewer 
+            config={config} 
+            selectedComponent3D={selectedComponent} 
+            onSelectComponent3D={(comp) => setSelectedComponent(comp)} 
+            activeMaterials={activeMaterials}
+            baselineMaterials={baselineMaterials}
+          />
+        </div>
+
+        {/* AI-Powered Budget Extraction & Live Material Cost Balancing */}
+        <BudgetManager 
+          customSuppliers={customSuppliers}
+          setCustomSuppliers={handleSetCustomSuppliers}
+          onSupplierActivated={(name) => console.log("Proveedor activado en los cálculos dinámicos:", name)}
+          config={config}
+        />
+
+      </main>
+
+      {/* Footer copyright */}
+      <footer className="mt-16 text-center text-slate-600 text-xs leading-relaxed max-w-xl mx-auto px-4">
+        <p>© 2026 Constracad S.A. Mendoza, Argentina. Sistema desarrollado bajo normativa CIRSOC 102 con cotizaciones de distribuidores siderúrgicos certificados en Cuyo.</p>
+      </footer>
+    </div>
+  );
+}
+
+function generateQuotationText(config: StructureConfig, items: MaterialItem[]): string {
+  const dateStr = new Date().toLocaleDateString('es-AR');
+  let text = `SOLICITUD DE COTIZACIÓN DE ADICIONALES/FALTANTES
+Fecha: ${dateStr}
+Obra: Cartel Mendoza (${(config.width / 100).toFixed(2)}m x ${(config.height / 100).toFixed(2)}m)
+
+Estimado Proveedor Siderometalúrgico,
+Le solicito cotización para la provisión de los siguientes materiales adicionales/faltantes según la re-ingeniería de diseño ajustada por Constracad S.A.:
+
+`;
+
+  items.forEach(item => {
+    let specLabel = '';
+    let detailedDescription = '';
+
+    if (item.id === 'mat_cimentacion') {
+      specLabel = `Hormigón Elaborado Estructural Clase H-${config.foundationConcreteGrade.toUpperCase().replace('H', '')}`;
+      detailedDescription = `Hormigón elaborado normalizado para el llenado de ${config.columnCount} pozos de cimentación de ${config.foundationWidth}x${config.foundationWidth} cm de sección y ${config.foundationDepth} cm de profundidad.`;
+    } else if (item.id === 'mat_anclajes') {
+      specLabel = `Kits de Anclaje de Viento de Alta Resistencia`;
+      const basePlateWidth = Math.round(config.foundationWidth * 0.70 * 10);
+      detailedDescription = `Kit de Arriostramiento que contiene:
+     * Placa Base de acero estructural de ${basePlateWidth}x${basePlateWidth} mm cortada de chapa de ${config.anchorPlateThickness} mm de espesor, perforada con ojales para pernos de ${config.anchorBoltDiameter}".
+     * Refuerzos de unión: 4 escuadras triangulares para impedir flexión y fatiga de la soldadura de unión (espesor 9.5 mm / 3/8", medidas de 80 mm de base por 160 mm de altura, para soldar perpendicularmente al tubo y base).
+     * Pernos de cimentación (Anclajes J-Bolt): 4 pernos roscados curvados tipo J-Bolt de diámetro ${config.anchorBoltDiameter}" x 500 mm de longitud lineal, fabricados en acero grado ASTM A307 / F-24, con rosca provista de tuerca y arandela de presión cada uno.`;
+    } else if (item.id === 'mat_tornillos') {
+      specLabel = `Tornillos Autoperforantes 1" c/Arandela Vulcanizada`;
+      detailedDescription = `Tornillos autoperforantes de cabeza hexagonal de 1" de largo provistos de arandela vulcanizada de neoprene EPDM para fijación estanca de chapa sobre perfiles.`;
+    } else if (item.id === 'mat_electrodos') {
+      specLabel = `Electrodos Conarco E6013 Punta Azul (2.5 mm)`;
+      detailedDescription = `Aporte de electrodos Conarco de 2.5 mm de diámetro tipo E6013 para soldadura de arco manual continua de alta penetración en perfiles estructurales de chasis.`;
+    } else if (item.id === 'mat_pintura') {
+      specLabel = `Esmalte Sintético Convertidor de Óxido 3-en-1`;
+      detailedDescription = `Acabado de alta protección anticorrosiva 3-en-1 (Fondo + convertidor + esmalte), color negro satinado para durabilidad de cara a la intemperie mendozina con radiación UV extrema.`;
+    } else if (item.id === 'mat_marco') {
+      specLabel = `Caño Estructural Cuadrado [Marco] de ${config.marcoProfile} mm`;
+      detailedDescription = `Barras de acero de 6.0 metros de longitud comercial destinadas al chasis perimetral rigidizador externo del cartel.`;
+    } else if (item.id === 'mat_skeleton') {
+      specLabel = `Caño Estructural Cuadrado [Esqueleto] de ${config.skeletonProfile} mm`;
+      detailedDescription = `Barras de acero de 6.0 metros de longitud destinadas a la grilla y entramado interior rigidizador anti-vibración.`;
+    } else if (item.id === 'mat_chapa') {
+      specLabel = `Placas de Chapa Lisa para Frente BWG Nº 18`;
+      detailedDescription = `Placas lisas de acero galvanizado calibre BWG 18 (1.25 mm de espesor real) de dimensiones ${config.chapaSheetSize === '1.0x2.0' ? '1.00m x 2.00m' : '1.22m x 2.44m'} para revestimiento del plano frontal publicitario.`;
+    } else if (item.id === 'mat_postes') {
+      const labelColumn = config.columnProfile === 'tubing_2_7_8' ? 'Tubing 2 7/8"' : config.columnProfile === 'tubing_3_1_2' ? 'Tubing 3 1/2"' : 'Caño de acero redondo Ø 114 mm';
+      specLabel = `Caño de Acero de Rezago Petrolero [Poste Maestro] ${labelColumn}`;
+      detailedDescription = `Postes principales tipo Tubing pesado sin costura para fijación y herraje subterráneo de soporte del cartel, longitud unitaria de corte de ${( (config.clearanceHeight + config.height / 2 + config.columnBuriedDepth) / 100 ).toFixed(2)} m.`;
+    } else {
+      specLabel = item.name;
+      detailedDescription = item.description;
+    }
+
+    text += `• ${specLabel}:
+  - Cantidad requerida: ${item.quantity} ${item.unit}
+  - Detalle técnico: ${detailedDescription}
+`;
+  });
+
+  text += `\nLugar de entrega: Mendoza, Argentina. Agradezco incluir cotización detallada de flete, plazos de entrega e indicar si los precios informados incluyen IVA (10.5% / 21%). Quedo a disposición.`;
+  return text;
+}

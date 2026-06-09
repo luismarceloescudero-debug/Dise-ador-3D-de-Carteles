@@ -1,0 +1,6 @@
+{
+  "name": "Diseñador 3D de Carteles",
+  "description": "Diseñador 3D interactivo y calculador estructural de carteles publicitarios con simulación de realidad aumentada, planos detallados de cimentación y presupuestos reales.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
