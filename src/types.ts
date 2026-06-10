@@ -20,6 +20,7 @@ export interface StructureConfig {
   columnProfile: string; // "tubing_2_7_8" | "tubing_3_1_2" | "tubing_4"
   columnCount: number; // default 6, as requested (6 tubing caños)
   columnBuriedDepth: number; // in cm, default 100 (1 meter)
+  columnInsertHeight?: number; // in cm, default 150 (height the tubing overlaps/inserts into frame)
   
   // Foundation Concrete Blocks
   foundationWidth: number; // in cm, default 80

@@ -42,6 +42,7 @@ export default function App() {
     columnProfile: 'tubing_3_1_2', // "muy robusto" Tubing 3 1/2"
     columnCount: 6, // default 6 support poles
     columnBuriedDepth: 300, // 300 cm de profundidad (3 meters)
+    columnInsertHeight: 150, // 150 cm overlapping insert depth
     foundationWidth: 80, // square concrete base width in cm
     foundationDepth: 300, // concrete depth matches 300 cm buried depth
     foundationConcreteGrade: 'H25', // "fuerte" H25
@@ -529,7 +530,8 @@ export default function App() {
 
                   {selectedComponent === 'columns' && (() => {
                     const colDetails = PROFILE_DETAILS.columns.find(col => col.value === config.columnProfile) || PROFILE_DETAILS.columns[0];
-                    const postLength = (config.clearanceHeight + config.height / 2 + config.columnBuriedDepth) / 100;
+                    const insertHeight = config.columnInsertHeight !== undefined ? config.columnInsertHeight : (config.height / 2);
+                    const postLength = (config.clearanceHeight + insertHeight + config.columnBuriedDepth) / 100;
                     return (
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
                         <div className="space-y-1.5">
@@ -553,8 +555,8 @@ export default function App() {
                               <span className="font-bold text-slate-300 font-mono">{(config.clearanceHeight / 100).toFixed(2)} m</span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-slate-500 font-medium whitespace-nowrap">↳ Tramo dentro del Cartel:</span>
-                              <span className="font-bold text-slate-300 font-mono">{(config.height / 200).toFixed(2)} m</span>
+                              <span className="text-slate-500 font-medium whitespace-nowrap">↳ Tramo dentro del Cartel (Inserto):</span>
+                              <span className="font-bold text-slate-300 font-mono">{(insertHeight / 100).toFixed(2)} m</span>
                             </div>
                             <div className="flex justify-between">
                               <span className="text-slate-500 font-medium whitespace-nowrap">↳ Tramo Subterráneo:</span>
@@ -960,6 +962,132 @@ export default function App() {
                 {sidebarTab === 'parametros' ? (
                   <div className="space-y-4 max-h-[440px] overflow-y-auto pr-1">
                     
+                    {/* WIND CALCULATION BLOCK AND QUICK CONFIG PRESETS */}
+                    <div className="bg-slate-900/60 p-3 rounded-xl border border-slate-800 space-y-3">
+                      <span className="text-[10px] font-black text-amber-500 tracking-wider block uppercase border-l-2 border-amber-500 pl-2">
+                        🌪️ Zonas de Viento y Cargas (Mendoza)
+                      </span>
+                      
+                      <p className="text-[10.5px] text-slate-400 leading-normal">
+                        Mendoza exige cálculos estructurales para ráfagas severas. Seleccioná una de las configuraciones de obra certificadas por defecto:
+                      </p>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        {/* Button Zonda */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setConfig(prev => ({
+                              ...prev,
+                              columnProfile: 'tubing_2_7_8',
+                              columnBuriedDepth: 150,
+                              columnInsertHeight: 150,
+                              foundationWidth: 80,
+                              foundationDepth: 150,
+                              foundationConcreteGrade: 'H21',
+                              gridPattern: 'diagonal_cross',
+                              marcoProfile: '50x50x2',
+                              skeletonProfile: '40x40x2',
+                              clearanceHeight: 450
+                            }));
+                          }}
+                          className={`text-left p-2 rounded-lg border text-xs flex flex-col justify-between transition relative overflow-hidden cursor-pointer active:scale-98 h-[95px] ${
+                            config.columnBuriedDepth <= 180 && config.columnProfile === 'tubing_2_7_8'
+                              ? 'bg-amber-600/15 border-amber-500/80 text-amber-100 ring-1 ring-amber-500/25'
+                              : 'bg-slate-950 border-slate-850 hover:border-slate-700 text-slate-300'
+                          }`}
+                        >
+                          <span className="font-extrabold flex items-center gap-1 text-[11px] text-amber-400">
+                            🌪️ Viento Zonda
+                          </span>
+                          <span className="text-[9.5px] text-slate-400 mt-0.5 line-clamp-2">
+                            Llanura y cordón mendocino. Tubing 2 7/8&quot; con base H21.
+                          </span>
+                          <div className="text-[8.5px] font-mono text-amber-400 bg-amber-500/15 py-0.5 px-1.5 rounded self-start mt-1">
+                            120 km/h (Zonda)
+                          </div>
+                        </button>
+
+                        {/* Button Cordillera */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setConfig(prev => ({
+                              ...prev,
+                              columnProfile: 'tubing_3_1_2',
+                              columnBuriedDepth: 250,
+                              columnInsertHeight: 200,
+                              foundationWidth: 100,
+                              foundationDepth: 250,
+                              foundationConcreteGrade: 'H25',
+                              gridPattern: 'diagonal_cross',
+                              marcoProfile: '60x60x2',
+                              skeletonProfile: '40x40x2',
+                              clearanceHeight: 400
+                            }));
+                          }}
+                          className={`text-left p-2 rounded-lg border text-xs flex flex-col justify-between transition relative overflow-hidden cursor-pointer active:scale-98 h-[95px] ${
+                            config.columnBuriedDepth > 180 || config.columnProfile === 'tubing_3_1_2'
+                              ? 'bg-cyan-600/15 border-cyan-500/80 text-cyan-100 ring-1 ring-cyan-500/25'
+                              : 'bg-slate-950 border-slate-850 hover:border-slate-700 text-slate-300'
+                          }`}
+                        >
+                          <span className="font-extrabold flex items-center gap-1 text-[11px] text-cyan-400">
+                            🏔️ Cordillera Andes
+                          </span>
+                          <span className="text-[9.5px] text-slate-400 mt-0.5 line-clamp-2">
+                            Alta montaña y ráfagas extremas. Tubing 3 1/2&quot; con base H25.
+                          </span>
+                          <div className="text-[8.5px] font-mono text-cyan-400 bg-cyan-500/15 py-0.5 px-1.5 rounded self-start mt-1">
+                            160 km/h (Cordillera)
+                          </div>
+                        </button>
+                      </div>
+
+                      {/* Real-Time Wind Load Dynamic Calculation Panel */}
+                      <div className="bg-slate-950 p-2 rounded-lg border border-slate-850 space-y-1">
+                        <span className="text-[8.5px] font-bold text-slate-500 uppercase tracking-widest block">
+                          📊 Cálculo Dinámico de Fuerzas
+                        </span>
+                        {(() => {
+                          const v = (config.columnBuriedDepth > 180 || config.columnProfile === 'tubing_3_1_2') ? 160 : 120;
+                          const wM = config.width / 100;
+                          const hM = config.height / 100;
+                          const area = wM * hM;
+                          
+                          // Wind pressure q = 0.0053 * V^2 (kg/m2)
+                          const q = 0.0053 * v * v;
+                          // Force F = q * A * Cf (drag coeff Cf = 1.2)
+                          const cf = 1.2;
+                          const forceTotalKg = q * area * cf;
+                          const forceTons = forceTotalKg / 1000;
+
+                          return (
+                            <div className="grid grid-cols-2 gap-1.5 text-[10px]">
+                              <div className="text-left">
+                                <span className="text-slate-500 block text-[8px] uppercase">Ráfagas:</span>
+                                <span className="font-mono font-bold text-slate-300">{v} km/h</span>
+                              </div>
+                              <div className="text-left">
+                                <span className="text-slate-500 block text-[8px] uppercase">Presión de diseño:</span>
+                                <span className="font-mono font-bold text-slate-300">{q.toFixed(1)} kg/m²</span>
+                              </div>
+                              <div className="text-left mt-0.5 border-t border-slate-900 pt-0.5">
+                                <span className="text-slate-500 block text-[8px] uppercase">Área expuesta:</span>
+                                <span className="font-mono font-bold text-slate-300">{area.toFixed(1)} m²</span>
+                              </div>
+                              <div className="text-left mt-0.5 border-t border-slate-900 pt-0.5">
+                                <span className="text-slate-500 block text-[8px] uppercase">Empuje Horizontal:</span>
+                                <span className="font-mono font-black text-rose-400">
+                                  {forceTotalKg.toFixed(0)} kg ({forceTons.toFixed(2)} Tn)
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                    
                     {/* Category A: Dimensiones Generales del Cartel */}
                     <div className="space-y-2.5">
                       <span className="text-[10px] font-bold text-cyan-400 tracking-wider block uppercase border-l-2 border-cyan-500 pl-2">1. Geometría y Alturas</span>
@@ -1144,20 +1272,20 @@ export default function App() {
                           ))}
                         </select>
 
-                        <div className="grid grid-cols-2 gap-2 mt-2">
+                        <div className="grid grid-cols-3 gap-1.5 mt-2">
                           <div>
-                            <label className="block text-[9.5px] text-slate-500">Cantidad Canos:</label>
+                            <label className="block text-[9px] text-slate-500 font-medium whitespace-nowrap">Cant. Postes:</label>
                             <input
                               type="number"
                               value={config.columnCount}
                               min="2"
                               max="10"
                               onChange={(e) => updateConfig('columnCount', Number(e.target.value))}
-                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs focus:ring-1"
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-cyan-500 focus:outline-none"
                             />
                           </div>
                           <div>
-                            <label className="block text-[9.5px] text-slate-500">Profundidad (cm):</label>
+                            <label className="block text-[9px] text-slate-500 font-medium whitespace-nowrap">Enterrado (cm):</label>
                             <input
                               type="number"
                               value={config.columnBuriedDepth}
@@ -1165,7 +1293,19 @@ export default function App() {
                               max="450"
                               step="10"
                               onChange={(e) => updateConfig('columnBuriedDepth', Number(e.target.value))}
-                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs focus:ring-1"
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-cyan-500 focus:outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[9px] text-slate-500 font-medium whitespace-nowrap">Inserto (cm):</label>
+                            <input
+                              type="number"
+                              value={config.columnInsertHeight !== undefined ? config.columnInsertHeight : 150}
+                              min="50"
+                              max="300"
+                              step="10"
+                              onChange={(e) => updateConfig('columnInsertHeight', Number(e.target.value))}
+                              className="w-full bg-slate-950 border border-slate-800 rounded px-2 py-1 text-xs focus:ring-1 focus:ring-cyan-500 focus:outline-none"
                             />
                           </div>
                         </div>
@@ -1564,7 +1704,8 @@ Le solicito cotización para la provisión de los siguientes materiales adiciona
     } else if (item.id === 'mat_postes') {
       const labelColumn = config.columnProfile === 'tubing_2_7_8' ? 'Tubing 2 7/8"' : config.columnProfile === 'tubing_3_1_2' ? 'Tubing 3 1/2"' : 'Caño de acero redondo Ø 114 mm';
       specLabel = `Caño de Acero de Rezago Petrolero [Poste Maestro] ${labelColumn}`;
-      detailedDescription = `Postes principales tipo Tubing pesado sin costura para fijación y herraje subterráneo de soporte del cartel, longitud unitaria de corte de ${( (config.clearanceHeight + config.height / 2 + config.columnBuriedDepth) / 100 ).toFixed(2)} m.`;
+      const insertHeight = config.columnInsertHeight !== undefined ? config.columnInsertHeight : (config.height / 2);
+      detailedDescription = `Postes principales tipo Tubing pesado sin costura para fijación y herraje subterráneo de soporte del cartel, longitud unitaria de corte de ${( (config.clearanceHeight + insertHeight + config.columnBuriedDepth) / 100 ).toFixed(2)} m.`;
     } else {
       specLabel = item.name;
       detailedDescription = item.description;

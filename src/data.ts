@@ -398,7 +398,8 @@ export function calculateMaterials(config: StructureConfig, customSuppliers?: Su
   };
   
   // 4. POSTES (Tubing)
-  const postLength = c + 1.5 + buried; // Sube 150 cm sobre base de marco, clearance c, con enterrado de buried.
+  const insertM = (config.columnInsertHeight !== undefined ? config.columnInsertHeight : 150) / 100;
+  const postLength = c + insertM + buried; // Sube insertM sobre base de marco, clearance c, con enterrado de buried.
   let tubingPieceLength = 9.0;
   let tubingPrice = 0;
   let tubingSupplier = '';
@@ -445,7 +446,7 @@ export function calculateMaterials(config: StructureConfig, customSuppliers?: Su
     unitPrice: tubingPrice,
     supplier: tubingSupplier,
     totalPrice: tubesToBuyCount * tubingPrice,
-    description: `Postes de soporte principal tipo Tubing. Sube 150 cm desde la base del marco del cartel, dejando libre ${(postLength - 1.5 - buried).toFixed(2)} m, más ${buried.toFixed(2)} m en el cimiento. Largo comercial de barra tubing: ${tubingPieceLength.toFixed(1)}m. Largo total por caño requerido de obra: ${postLength.toFixed(2)} metros.`
+    description: `Postes de soporte principal tipo Tubing. Sube ${Math.round(insertM * 100)} cm desde la base del marco del cartel, dejando libre ${(postLength - insertM - buried).toFixed(2)} m, más ${buried.toFixed(2)} m en el cimiento. Largo comercial de barra tubing: ${tubingPieceLength.toFixed(1)}m. Largo total por caño requerido de obra: ${postLength.toFixed(2)} metros.`
   };
 
   // 4b. LOGICA DE SUJECIÓN Y MONTAJE (Placas de Vinculación y Enganches de Tubing a la Grilla)

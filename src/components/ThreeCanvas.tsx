@@ -417,7 +417,8 @@ export default function ThreeCanvas({
     // 11. BUILD INTEGRATED CHASSIS SUPPORT COLUMNS (TUBING PETROQUÍMICO REFORZADO)
     // Sized to rise up from subterranean foundations (-buried) and end EXACTLY at half sign height (clearance + h / 2)
     // Aligning horizontally with the 6 vertical lines of the grid system for clean symmetric support
-    const colTotalLength = clearance + h/2 + buried;
+    const insertMeters = (config.columnInsertHeight !== undefined ? config.columnInsertHeight : (config.height / 2)) / 100;
+    const colTotalLength = clearance + insertMeters + buried;
     const pipeDiameter = config.columnProfile === 'tubing_2_7_8' ? 0.073  // 2 7/8 inches
                        : config.columnProfile === 'tubing_3_1_2' ? 0.089  // 3 1/2 inches
                        : 0.114; // 4 1/2 inches
@@ -457,9 +458,9 @@ export default function ThreeCanvas({
       const colGeo = new THREE.CylinderGeometry(pipeDiameter/2, pipeDiameter/2, colTotalLength, 24);
       const colMesh = new THREE.Mesh(colGeo, colMat);
       
-      // Bottom rests buried (y = -buried), top climbs up to (clearance + h/2).
-      // Center of this length is exactly (clearance + h/2 - buried) / 2
-      const colYCenter = (clearance + h/2 - buried) / 2;
+      // Bottom rests buried (y = -buried), top climbs up to (clearance + insertMeters).
+      // Center of this length is exactly (clearance + insertMeters - buried) / 2
+      const colYCenter = (clearance + insertMeters - buried) / 2;
       // Position column directly touching the back face of client mounting rails
       const colZ = -pipeThick - (pipeDiameter/2);
       colMesh.position.set(colX, colYCenter, colZ);
