@@ -21,6 +21,7 @@ export interface StructureConfig {
   columnCount: number; // default 6, as requested (6 tubing caños)
   columnBuriedDepth: number; // in cm, default 100 (1 meter)
   columnInsertHeight?: number; // in cm, default 150 (height the tubing overlaps/inserts into frame)
+  windSpeed?: number; // in km/h, default 120 or 160 depending on zone
   
   // Foundation Concrete Blocks
   foundationWidth: number; // in cm, default 80

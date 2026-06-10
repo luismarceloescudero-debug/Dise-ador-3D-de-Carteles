@@ -29,6 +29,7 @@ import {
 } from "lucide-react";
 import { SupplierPreset, StructureConfig } from "../types";
 import { SUPPLIER_PRESETS, calculateMaterials } from "../data";
+import SmartPurchaseAnalyzer from "./SmartPurchaseAnalyzer";
 
 interface BudgetManagerProps {
   customSuppliers: SupplierPreset[];
@@ -915,6 +916,22 @@ export function BudgetManager({
 
     addLog(`Proveedor modificado a "${editingHeaderName}" en el estimador con éxito.`, "success");
     setIsEditingHeader(false);
+  };
+
+  const handleSaveHeaderContact = (budgetId: string, contactText: string) => {
+    setBudgets(prev => prev.map(b => {
+      if (b.id === budgetId && b.data) {
+        return {
+          ...b,
+          data: {
+            ...b.data,
+            contact: contactText
+          }
+        };
+      }
+      return b;
+    }));
+    addLog("Contacto del emisor actualizado correctamente.", "success");
   };
 
   // Handle addition of a custom manual supplier preset directly with no file
@@ -1889,6 +1906,17 @@ export function BudgetManager({
                             </div>
                           );
                         })()}
+
+                        {config && (
+                          <SmartPurchaseAnalyzer
+                            config={config}
+                            selectedBudget={selectedBudget}
+                            budgets={budgets}
+                            customSuppliers={customSuppliers}
+                            calculateMaterials={calculateMaterials}
+                            onSaveContact={handleSaveHeaderContact}
+                          />
+                        )}
 
                         {/* AUTO-FIX OPERATIONS ZONE (Requested by user) */}
                         <div className="p-3 bg-slate-900/40 rounded-xl border border-slate-800 space-y-2">

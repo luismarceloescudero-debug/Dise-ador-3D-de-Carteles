@@ -31,7 +31,7 @@ export default function App() {
   const [config, setConfig] = useState<StructureConfig>({
     width: 800, // 800 cm (8 meters)
     height: 300, // 300 cm (3 meters)
-    clearanceHeight: 450, // distance ground to bottom of sign (4.50 meters)
+    clearanceHeight: 300, // distance ground to bottom of sign (3.00 meters)
     gridPattern: 'diagonal_cross', // "San Andrés" default
     gridRows: 6, // 6 horizontal braces
     gridCols: 6, // 6 vertical braces
@@ -42,8 +42,9 @@ export default function App() {
     columnProfile: 'tubing_3_1_2', // "muy robusto" Tubing 3 1/2"
     columnCount: 6, // default 6 support poles
     columnBuriedDepth: 300, // 300 cm de profundidad (3 meters)
-    columnInsertHeight: 150, // 150 cm overlapping insert depth
-    foundationWidth: 80, // square concrete base width in cm
+    columnInsertHeight: 300, // 300 cm overlapping insert depth
+    windSpeed: 160,       // 160 km/h default for Cordillera
+    foundationWidth: 100, // square concrete base width in cm
     foundationDepth: 300, // concrete depth matches 300 cm buried depth
     foundationConcreteGrade: 'H25', // "fuerte" H25
     anchorBoltDiameter: '7/8', // diameter in inches (reforzado)
@@ -928,86 +929,21 @@ export default function App() {
                   </div>
                 )}
 
-                {/* Segment tab control to switch between Ajustes parameters and Cómputo comparativo */}
-                <div className="grid grid-cols-2 gap-1 p-1 bg-slate-950 rounded-xl mb-4 text-xs font-semibold">
-                  <button
-                    type="button"
-                    onClick={() => setSidebarTab('parametros')}
-                    className={`py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all text-center border cursor-pointer ${
-                      sidebarTab === 'parametros'
-                        ? 'bg-slate-800 border-slate-700/80 text-white shadow-sm font-bold'
-                        : 'bg-transparent border-transparent text-slate-400 hover:text-slate-200 font-normal'
-                    }`}
-                  >
-                    <Settings2 className="w-3.5 h-3.5 text-cyan-400" />
-                    <span>Ajustes</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setSidebarTab('computo')}
-                    className={`py-2 px-3 rounded-lg flex items-center justify-center gap-1.5 transition-all text-center border cursor-pointer relative ${
-                      sidebarTab === 'computo'
-                        ? 'bg-slate-800 border-slate-700/80 text-white shadow-sm font-bold'
-                        : 'bg-transparent border-transparent text-slate-400 hover:text-slate-100 font-normal'
-                    }`}
-                  >
-                    <FileSpreadsheet className="w-3.5 h-3.5 text-emerald-400" />
-                    <span>Cómputo en Vivo</span>
-                    {Math.abs(budgetDiff) > 100 && (
-                      <span className="absolute top-1.5 right-2 w-1.5 h-1.5 bg-cyan-500 rounded-full animate-pulse" />
-                    )}
-                  </button>
-                </div>
-
-                {sidebarTab === 'parametros' ? (
-                  <div className="space-y-4 max-h-[440px] overflow-y-auto pr-1">
+                <div className="space-y-4 max-h-[640px] overflow-y-auto pr-1 animate-fade-in">
                     
                     {/* WIND CALCULATION BLOCK AND QUICK CONFIG PRESETS */}
                     <div className="bg-slate-900/60 p-3 rounded-xl border border-slate-800 space-y-3">
-                      <span className="text-[10px] font-black text-amber-500 tracking-wider block uppercase border-l-2 border-amber-500 pl-2">
-                        🌪️ Zonas de Viento y Cargas (Mendoza)
-                      </span>
+                      <div className="flex justify-between items-center">
+                        <span className="text-[10px] font-black text-amber-500 tracking-wider block uppercase border-l-2 border-amber-500 pl-2">
+                          🌪️ Zonas de Viento y Carga de Mendoza
+                        </span>
+                      </div>
                       
                       <p className="text-[10.5px] text-slate-400 leading-normal">
-                        Mendoza exige cálculos estructurales para ráfagas severas. Seleccioná una de las configuraciones de obra certificadas por defecto:
+                        Mendoza exige cálculos estructurales estrictos debido a ráfagas severas. Elegí uno de los diseños típicos certificados para Mendoza o ajustá el viento de forma manual:
                       </p>
 
                       <div className="grid grid-cols-2 gap-2">
-                        {/* Button Zonda */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setConfig(prev => ({
-                              ...prev,
-                              columnProfile: 'tubing_2_7_8',
-                              columnBuriedDepth: 150,
-                              columnInsertHeight: 150,
-                              foundationWidth: 80,
-                              foundationDepth: 150,
-                              foundationConcreteGrade: 'H21',
-                              gridPattern: 'diagonal_cross',
-                              marcoProfile: '50x50x2',
-                              skeletonProfile: '40x40x2',
-                              clearanceHeight: 450
-                            }));
-                          }}
-                          className={`text-left p-2 rounded-lg border text-xs flex flex-col justify-between transition relative overflow-hidden cursor-pointer active:scale-98 h-[95px] ${
-                            config.columnBuriedDepth <= 180 && config.columnProfile === 'tubing_2_7_8'
-                              ? 'bg-amber-600/15 border-amber-500/80 text-amber-100 ring-1 ring-amber-500/25'
-                              : 'bg-slate-950 border-slate-850 hover:border-slate-700 text-slate-300'
-                          }`}
-                        >
-                          <span className="font-extrabold flex items-center gap-1 text-[11px] text-amber-400">
-                            🌪️ Viento Zonda
-                          </span>
-                          <span className="text-[9.5px] text-slate-400 mt-0.5 line-clamp-2">
-                            Llanura y cordón mendocino. Tubing 2 7/8&quot; con base H21.
-                          </span>
-                          <div className="text-[8.5px] font-mono text-amber-400 bg-amber-500/15 py-0.5 px-1.5 rounded self-start mt-1">
-                            120 km/h (Zonda)
-                          </div>
-                        </button>
-
                         {/* Button Cordillera */}
                         <button
                           type="button"
@@ -1015,42 +951,100 @@ export default function App() {
                             setConfig(prev => ({
                               ...prev,
                               columnProfile: 'tubing_3_1_2',
-                              columnBuriedDepth: 250,
-                              columnInsertHeight: 200,
+                              columnBuriedDepth: 300,
+                              columnInsertHeight: 300,
                               foundationWidth: 100,
-                              foundationDepth: 250,
+                              foundationDepth: 300,
                               foundationConcreteGrade: 'H25',
                               gridPattern: 'diagonal_cross',
                               marcoProfile: '60x60x2',
                               skeletonProfile: '40x40x2',
-                              clearanceHeight: 400
+                              clearanceHeight: 300,
+                              windSpeed: 160
                             }));
                           }}
-                          className={`text-left p-2 rounded-lg border text-xs flex flex-col justify-between transition relative overflow-hidden cursor-pointer active:scale-98 h-[95px] ${
-                            config.columnBuriedDepth > 180 || config.columnProfile === 'tubing_3_1_2'
+                          className={`text-left p-2 rounded-lg border text-xs flex flex-col justify-between transition relative overflow-hidden cursor-pointer active:scale-98 h-[105px] ${
+                            config.columnBuriedDepth === 300 && config.columnInsertHeight === 300 && config.columnProfile === 'tubing_3_1_2'
                               ? 'bg-cyan-600/15 border-cyan-500/80 text-cyan-100 ring-1 ring-cyan-500/25'
                               : 'bg-slate-950 border-slate-850 hover:border-slate-700 text-slate-300'
                           }`}
                         >
                           <span className="font-extrabold flex items-center gap-1 text-[11px] text-cyan-400">
-                            🏔️ Cordillera Andes
+                            🏔️ Zona Cordillerana
                           </span>
-                          <span className="text-[9.5px] text-slate-400 mt-0.5 line-clamp-2">
-                            Alta montaña y ráfagas extremas. Tubing 3 1/2&quot; con base H25.
+                          <span className="text-[9px] text-slate-400 mt-0.5 line-clamp-2 leading-snug">
+                            Alta Montaña. Estructura robustecida. Tubing 3 1/2&quot;, cimiento integral y 300cm inserto/libre.
                           </span>
                           <div className="text-[8.5px] font-mono text-cyan-400 bg-cyan-500/15 py-0.5 px-1.5 rounded self-start mt-1">
                             160 km/h (Cordillera)
                           </div>
                         </button>
+
+                        {/* Button Zonda */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setConfig(prev => ({
+                              ...prev,
+                              columnProfile: 'tubing_2_7_8',
+                              columnBuriedDepth: 300,
+                              columnInsertHeight: 300,
+                              foundationWidth: 90,
+                              foundationDepth: 300,
+                              foundationConcreteGrade: 'H21',
+                              gridPattern: 'diagonal_cross',
+                              marcoProfile: '50x50x2',
+                              skeletonProfile: '40x40x2',
+                              clearanceHeight: 300,
+                              windSpeed: 120
+                            }));
+                          }}
+                          className={`text-left p-2 rounded-lg border text-xs flex flex-col justify-between transition relative overflow-hidden cursor-pointer active:scale-98 h-[105px] ${
+                            config.columnBuriedDepth === 300 && config.columnInsertHeight === 300 && config.columnProfile === 'tubing_2_7_8' && config.clearanceHeight === 300
+                              ? 'bg-amber-600/15 border-amber-500/80 text-amber-100 ring-1 ring-amber-500/25'
+                              : 'bg-slate-950 border-slate-850 hover:border-slate-700 text-slate-300'
+                          }`}
+                        >
+                          <span className="font-extrabold flex items-center gap-1 text-[11px] text-amber-400">
+                            🌪️ Viento Zonda
+                          </span>
+                          <span className="text-[9px] text-slate-400 mt-0.5 line-clamp-2 leading-snug">
+                            Valles mendocinos. Tubing 2 7/8&quot; optimizado, base de cemento reforzada de 300cm, inserto y altura libre de 3m.
+                          </span>
+                          <div className="text-[8.5px] font-mono text-amber-400 bg-amber-500/15 py-0.5 px-1.5 rounded self-start mt-1">
+                            120 km/h (Zonda)
+                          </div>
+                        </button>
+                      </div>
+
+                      {/* Manual Wind speed slider control */}
+                      <div className="bg-slate-950/80 p-2.5 rounded-lg border border-slate-850 space-y-1.5">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[8.5px] font-bold text-slate-500 uppercase tracking-wider block">
+                            🎚️ Control Manual de Ráfaga
+                          </span>
+                          <span className="text-[10px] font-black font-mono text-amber-400">
+                            {(config.windSpeed ?? 160)} km/h
+                          </span>
+                        </div>
+                        <input
+                          type="range"
+                          min="80"
+                          max="200"
+                          step="5"
+                          value={config.windSpeed ?? 160}
+                          onChange={(e) => updateConfig('windSpeed', Number(e.target.value))}
+                          className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-cyan-500"
+                        />
                       </div>
 
                       {/* Real-Time Wind Load Dynamic Calculation Panel */}
-                      <div className="bg-slate-950 p-2 rounded-lg border border-slate-850 space-y-1">
-                        <span className="text-[8.5px] font-bold text-slate-500 uppercase tracking-widest block">
-                          📊 Cálculo Dinámico de Fuerzas
+                      <div className="bg-slate-950 p-3 rounded-lg border border-slate-850 space-y-2">
+                        <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-widest block">
+                          📊 Cálculo Dinámico de Fuerzas en Tiempo Real
                         </span>
                         {(() => {
-                          const v = (config.columnBuriedDepth > 180 || config.columnProfile === 'tubing_3_1_2') ? 160 : 120;
+                          const v = config.windSpeed ?? 160;
                           const wM = config.width / 100;
                           const hM = config.height / 100;
                           const area = wM * hM;
@@ -1062,24 +1056,68 @@ export default function App() {
                           const forceTotalKg = q * area * cf;
                           const forceTons = forceTotalKg / 1000;
 
+                          // Overturning Moment (Momento de Volcamiento) F * lever_arm [clearanceHeight + height/2]
+                          const leverArmM = (config.clearanceHeight + (config.height / 2)) / 100;
+                          const momentKgm = forceTotalKg * leverArmM;
+                          const momentTonm = momentKgm / 1000;
+
+                          // Structural stability factor evaluation
+                          const tubeResilienceIndex = config.columnProfile === 'tubing_3_1_2' ? 5200 : config.columnProfile === 'tubing_2_7_8' ? 2600 : 6000;
+                          const concreteStabilityFactor = (config.columnBuriedDepth / 300) * (config.columnBuriedDepth / 300);
+                          const totalStructuralStrength = config.columnCount * tubeResilienceIndex * concreteStabilityFactor;
+                          const safetyFactor = Math.max(0.1, totalStructuralStrength / (momentKgm || 1));
+
+                          let stabilityStatus = "ÓPTIMO 🛡️";
+                          let stabilityColor = "text-emerald-400";
+                          let stabilityBg = "bg-emerald-500/10 border-emerald-500/30";
+
+                          if (safetyFactor < 1.0) {
+                            stabilityStatus = "CRÍTICO 🚨 (Riesgo de Vuelco)";
+                            stabilityColor = "text-rose-400 font-extrabold";
+                            stabilityBg = "bg-rose-500/10 border-rose-500/30";
+                          } else if (safetyFactor < 1.5) {
+                            stabilityStatus = "MODERADO ⚠️ (Reforzar Cimiento/Perfil)";
+                            stabilityColor = "text-amber-400";
+                            stabilityBg = "bg-amber-500/10 border-amber-500/30";
+                          }
+
                           return (
-                            <div className="grid grid-cols-2 gap-1.5 text-[10px]">
-                              <div className="text-left">
-                                <span className="text-slate-500 block text-[8px] uppercase">Ráfagas:</span>
-                                <span className="font-mono font-bold text-slate-300">{v} km/h</span>
+                            <div className="space-y-1.5">
+                              <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-[10px]">
+                                <div className="text-left">
+                                  <span className="text-slate-500 block text-[8px] uppercase">Ráfaga de Diseño:</span>
+                                  <span className="font-mono font-bold text-slate-300">{v} km/h</span>
+                                </div>
+                                <div className="text-left">
+                                  <span className="text-slate-500 block text-[8px] uppercase">Presión de diseño (q):</span>
+                                  <span className="font-mono font-bold text-slate-300">{q.toFixed(1)} kg/m²</span>
+                                </div>
+                                <div className="text-left mt-1 border-t border-slate-900 pt-1">
+                                  <span className="text-slate-500 block text-[8px] uppercase">Superficie Vélica:</span>
+                                  <span className="font-mono font-bold text-slate-300">{area.toFixed(2)} m² ({config.width}x{config.height} cm)</span>
+                                </div>
+                                <div className="text-left mt-1 border-t border-slate-900 pt-1">
+                                  <span className="text-slate-500 block text-[8px] uppercase">Empuje Horizontal F:</span>
+                                  <span className="font-mono font-extrabold text-rose-400">
+                                    {forceTotalKg.toFixed(0)} kg ({forceTons.toFixed(2)} Tn)
+                                  </span>
+                                </div>
+                                <div className="text-left mt-1 border-t border-slate-900 pt-1">
+                                  <span className="text-slate-500 block text-[8px] uppercase">Brazo de Palanca:</span>
+                                  <span className="font-mono font-bold text-slate-300">{leverArmM.toFixed(2)} metros</span>
+                                </div>
+                                <div className="text-left mt-1 border-t border-slate-900 pt-1">
+                                  <span className="text-slate-500 block text-[8px] uppercase">Momento Volcador (M):</span>
+                                  <span className="font-mono font-extrabold text-amber-400">
+                                    {momentKgm.toFixed(0)} kgf·m ({momentTonm.toFixed(2)} Tn·m)
+                                  </span>
+                                </div>
                               </div>
-                              <div className="text-left">
-                                <span className="text-slate-500 block text-[8px] uppercase">Presión de diseño:</span>
-                                <span className="font-mono font-bold text-slate-300">{q.toFixed(1)} kg/m²</span>
-                              </div>
-                              <div className="text-left mt-0.5 border-t border-slate-900 pt-0.5">
-                                <span className="text-slate-500 block text-[8px] uppercase">Área expuesta:</span>
-                                <span className="font-mono font-bold text-slate-300">{area.toFixed(1)} m²</span>
-                              </div>
-                              <div className="text-left mt-0.5 border-t border-slate-900 pt-0.5">
-                                <span className="text-slate-500 block text-[8px] uppercase">Empuje Horizontal:</span>
-                                <span className="font-mono font-black text-rose-400">
-                                  {forceTotalKg.toFixed(0)} kg ({forceTons.toFixed(2)} Tn)
+
+                              <div className={`mt-1 border p-1.5 rounded flex items-center justify-between text-[9px] ${stabilityBg}`}>
+                                <span className="text-slate-400 font-medium whitespace-nowrap">Estabilidad Estructural:</span>
+                                <span className={`font-mono font-bold capitalize ${stabilityColor}`}>
+                                  {stabilityStatus} (cs: {safetyFactor.toFixed(2)})
                                 </span>
                               </div>
                             </div>
@@ -1371,227 +1409,7 @@ export default function App() {
                     </div>
 
                   </div>
-                ) : (
-                  <div className="space-y-4 max-h-[440px] overflow-y-auto pr-1">
-                    
-                    <div className="bg-slate-950 p-3.5 rounded-xl border border-slate-800/80 space-y-2.5">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[9px] text-slate-400 uppercase tracking-wider font-bold">Desvío de Presupuesto</span>
-                        {budgetDiff > 100 ? (
-                          <span className="bg-rose-500/10 text-rose-400 border border-rose-500/20 text-[9px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0 bg-rose-955/20">
-                            <TrendingUp className="w-3 h-3 text-rose-400" />
-                            <span>+{((budgetDiff / baselineGrandTotal) * 100).toFixed(1)}% vs Base</span>
-                          </span>
-                        ) : budgetDiff < -100 ? (
-                          <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-[9px] font-bold px-2 py-0.5 rounded-full flex items-center gap-1 shrink-0 bg-emerald-955/20">
-                            <TrendingDown className="w-3 h-3 text-emerald-400" />
-                            <span>{((budgetDiff / baselineGrandTotal) * 100).toFixed(1)}% (Ahorro)</span>
-                          </span>
-                        ) : (
-                          <span className="bg-slate-800 text-slate-400 text-[9px] font-bold px-2 py-0.5 rounded-full shrink-0">
-                            Sin desvío
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex items-baseline justify-between border-b border-slate-800/60 pb-2">
-                        <span className="text-xs text-slate-300 font-medium">Presupuesto Nuevo:</span>
-                        <span className="font-mono text-base font-black text-emerald-400">
-                          {formatPrice(activeGrandTotal)}
-                        </span>
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-2 text-[10px] pt-0.5">
-                        <div className="bg-slate-900/40 p-2 rounded border border-slate-800/30">
-                          <span className="block text-[8px] text-slate-500 uppercase font-semibold mb-0.5">Base (8x3m)</span>
-                          <span className="font-mono font-bold text-slate-300">{formatPrice(baselineGrandTotal)}</span>
-                        </div>
-                        <div className="bg-slate-900/40 p-2 rounded border border-slate-800/30">
-                          <span className="block text-[8px] text-slate-500 uppercase font-semibold mb-0.5">Diferencia</span>
-                          <span className={`font-mono font-bold ${budgetDiff > 100 ? 'text-rose-400' : budgetDiff < -100 ? 'text-emerald-400' : 'text-slate-400'}`}>
-                            {budgetDiff > 100 ? `+${formatPrice(budgetDiff)}` : budgetDiff < -105 ? `-${formatPrice(Math.abs(budgetDiff))}` : '$0'}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between text-[10px] bg-slate-900/40 px-2 py-1.5 rounded border border-slate-800/20">
-                        <span className="text-slate-400 flex items-center gap-1">
-                          <Scale className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                          <span>Peso Estructural:</span>
-                        </span>
-                        <div className="flex items-center gap-1">
-                          <span className="font-mono font-bold text-indigo-400">~{totalWeightKg.toLocaleString()} kg</span>
-                          {weightDiff !== 0 && (
-                            <span className={`font-mono text-[9px] ${weightDiff > 0 ? 'text-rose-400' : 'text-emerald-400'}`}>
-                              ({weightDiff > 0 ? `+${weightDiff}` : weightDiff} kg)
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2 pb-1">
-                      <span className="text-[9px] font-extrabold text-slate-400 tracking-wider block uppercase pl-1">Consumo de Materiales vs Cotizado:</span>
-                      
-                      {activeMaterials.map(item => {
-                        const baselineItem = baselineMaterials.find(b => b.id === item.id);
-                        const baselineItemIdx = baselineItem ? baselineItem.quantity : 0;
-                        const isUnquoted = baselineItemIdx === 0;
-                        const qtyDiff = isUnquoted ? -item.quantity : (item.quantity - baselineItemIdx);
-                        
-                        const getCatNameEs = (cat: string) => {
-                          switch(cat) {
-                            case 'marco': return 'Marco Outer';
-                            case 'skeleton': return 'Esqueleto Internal';
-                            case 'chapa': return 'Chapa Cubierta';
-                            case 'postes': return 'Postes Tubing';
-                            case 'cimentacion': return 'Base Cemento';
-                            case 'anclajes': return 'Placas / Pernos';
-                            default: return cat;
-                          }
-                        };
-                        
-                        return (
-                          <div key={item.id} className="bg-slate-950/40 p-2.5 rounded-xl border border-slate-800/40 space-y-2 hover:border-slate-800 transition-all">
-                            <div className="flex items-center justify-between text-[11px] font-bold border-b border-slate-900 pb-1">
-                              <span className="text-slate-200 truncate pr-2 max-w-[155px]" title={item.name}>{item.name}</span>
-                              <span className="text-slate-500 text-[8.5px] font-semibold shrink-0 uppercase tracking-wide">
-                                {getCatNameEs(item.category)}
-                              </span>
-                            </div>
-
-                            <div className="grid grid-cols-3 gap-1.5 text-center text-[9px]">
-                              <div className="bg-slate-900/60 py-1 px-1 rounded border border-slate-800/20">
-                                <span className="block text-[7.5px] text-slate-500 font-semibold uppercase">Actual</span>
-                                <span className="font-mono font-bold text-slate-200">{item.quantity} {item.unit}</span>
-                              </div>
-                              <div className="bg-slate-900/60 py-1 px-1 rounded border border-slate-800/20">
-                                <span className="block text-[7.5px] text-slate-500 font-semibold uppercase font-normal text-slate-405">Cotizado</span>
-                                <span className="font-mono font-bold text-slate-400">
-                                  {baselineItemIdx} {item.unit}
-                                </span>
-                              </div>
-                              <div className={`py-1 px-1 rounded border font-bold ${
-                                isUnquoted
-                                  ? 'bg-rose-950/20 border-rose-900/30 text-rose-400'
-                                  : qtyDiff > 0 
-                                    ? 'bg-rose-950/15 border-rose-900/30 text-rose-400' 
-                                    : qtyDiff < 0 
-                                      ? 'bg-emerald-950/15 border-emerald-900/30 text-emerald-400'
-                                      : 'bg-slate-900/40 border-slate-800/20 text-slate-500'
-                              }`}>
-                                <span className="block text-[7.5px] text-slate-500 font-semibold uppercase font-normal">Variación</span>
-                                <span className="font-mono">
-                                  {isUnquoted ? (
-                                    <span>-{item.quantity}</span>
-                                  ) : qtyDiff > 0 ? (
-                                    `+${qtyDiff}`
-                                  ) : qtyDiff < 0 ? (
-                                    `${qtyDiff}`
-                                  ) : (
-                                    '0'
-                                  )} {item.unit}
-                                </span>
-                              </div>
-                            </div>
-
-                            <div className="flex justify-between items-center text-[9.5px] text-slate-400 pt-0.5">
-                              <span>Subtotal actual:</span>
-                              <span className="font-mono font-bold text-slate-200">{formatPrice(item.totalPrice)}</span>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-
-                    {/* Pedido de Cotización Card for Unquoted Missing Materials & Increments */}
-                    {(() => {
-                      const unquotedMaterials = activeMaterials.map(m => {
-                        const baselineItem = baselineMaterials.find(b => b.id === m.id);
-                        let baselineQty = baselineItem ? baselineItem.quantity : 0;
-
-                        // Check if the profile of the current configuration differs from the baseline configuration.
-                        // If standard sizes change (e.g., Selecting 60x60x2 mm instead of the baseline 50x50x2 mm),
-                        // zero units of this new specific profile were quoted originally.
-                        let isProfileChanged = false;
-                        if (m.id === 'mat_marco' && config.marcoProfile !== BASELINE_CONFIG.marcoProfile) {
-                          isProfileChanged = true;
-                        } else if (m.id === 'mat_skeleton' && config.skeletonProfile !== BASELINE_CONFIG.skeletonProfile) {
-                          isProfileChanged = true;
-                        } else if (m.id === 'mat_chapa' && (config.chapaProfile !== BASELINE_CONFIG.chapaProfile || config.chapaSheetSize !== BASELINE_CONFIG.chapaSheetSize)) {
-                          isProfileChanged = true;
-                        } else if (m.id === 'mat_postes' && config.columnProfile !== BASELINE_CONFIG.columnProfile) {
-                          isProfileChanged = true;
-                        }
-
-                        if (isProfileChanged) {
-                          baselineQty = 0;
-                        }
-
-                        if (baselineQty === 0) {
-                          // Entirely missing category or newly selected unquoted profile size
-                          return { ...m };
-                        } else if (m.quantity > baselineQty) {
-                          // Incremental quantity is missing/additional due to design change!
-                          const extraQty = m.quantity - baselineQty;
-                          return {
-                            ...m,
-                            quantity: extraQty,
-                            totalPrice: extraQty * m.unitPrice,
-                            description: `${m.description} (Adicional requerido por re-diseño: +${extraQty} ${m.unit} sobre las ${baselineQty} cotizadas originalmente en el presupuesto base).`
-                          };
-                        }
-                        return null;
-                      }).filter(Boolean) as MaterialItem[];
-
-                      if (unquotedMaterials.length === 0) return null;
-
-                      return (
-                        <div className="mt-4 pt-3 border-t border-slate-800 space-y-2.5 animate-fade-in">
-                          <div className="bg-slate-900/80 p-3.5 rounded-xl border border-rose-500/20 space-y-2">
-                            <div className="flex items-center gap-1.5">
-                              <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" />
-                              <h4 className="text-[11px] font-black text-rose-400 uppercase tracking-wide">
-                                Pedido de Cotización (Faltantes)
-                              </h4>
-                            </div>
-                            <p className="text-[10px] text-slate-400 leading-relaxed">
-                              Hay materiales requeridos en el ajuste actual que no fueron cotizados originalmente (Variación es Negativa). Podés generar el pedido de cotización automático para estos faltantes:
-                            </p>
-                            
-                            <div className="bg-slate-950 p-2.5 rounded border border-slate-800 text-[9.5px] font-mono whitespace-pre-wrap leading-relaxed text-cyan-400/90 max-h-[140px] overflow-y-auto w-full">
-                              {generateQuotationText(config, unquotedMaterials)}
-                            </div>
-
-                            <button
-                              type="button"
-                              onClick={() => {
-                                navigator.clipboard.writeText(generateQuotationText(config, unquotedMaterials));
-                                setIsQuoteCopied(true);
-                                setTimeout(() => setIsQuoteCopied(false), 2000);
-                              }}
-                              className="w-full py-2 bg-gradient-to-r from-cyan-600/90 to-blue-600/90 hover:from-cyan-500 hover:to-blue-500 text-white font-bold text-[10px] rounded-lg tracking-wider uppercase transition-all shadow-md flex items-center justify-center gap-1.5 cursor-pointer"
-                            >
-                              {isQuoteCopied ? (
-                                <>
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                                  <span>¡Copiado al Portapapeles!</span>
-                                </>
-                              ) : (
-                                <>
-                                  <Mail className="w-3.5 h-3.5 shrink-0" />
-                                  <span>Copiar Pedido de Cotización</span>
-                                </>
-                              )}
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })()}
-                    
-                  </div>
-                )}
-              </div>
+                </div>
 
               {/* Reset to initial configuration Button */}
               <div className="pt-4 border-t border-slate-800 mt-4">
@@ -1599,24 +1417,26 @@ export default function App() {
                   onClick={() => setConfig({
                     width: 800,
                     height: 300,
-                    clearanceHeight: 400,
-                    gridPattern: 'standard',
+                    clearanceHeight: 300,
+                    gridPattern: 'diagonal_cross',
                     gridRows: 6,
                     gridCols: 6,
-                    marcoProfile: '50x50x2',
+                    marcoProfile: '60x60x2',
                     skeletonProfile: '40x40x2',
                     chapaProfile: 'chapa_18',
                     chapaSheetSize: '1.0x2.0',
-                    columnProfile: 'tubing_2_7_8',
+                    columnProfile: 'tubing_3_1_2',
                     columnCount: 6,
-                    columnBuriedDepth: 100,
-                    foundationWidth: 80,
-                    foundationDepth: 120,
-                    foundationConcreteGrade: 'H21',
-                    anchorBoltDiameter: '3/4',
+                    columnBuriedDepth: 300,
+                    columnInsertHeight: 300,
+                    windSpeed: 160,
+                    foundationWidth: 100,
+                    foundationDepth: 300,
+                    foundationConcreteGrade: 'H25',
+                    anchorBoltDiameter: '7/8',
                     anchorPlateThickness: 12
                   })}
-                  className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 hover:text-white rounded-xl font-bold transition-all border border-slate-700/60"
+                  className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 hover:text-white rounded-xl font-bold transition-all border border-slate-700/60 cursor-pointer"
                 >
                   Restablecer Medidas Estándar (8x3m)
                 </button>
