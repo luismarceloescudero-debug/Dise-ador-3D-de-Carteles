@@ -31,6 +31,10 @@ export interface StructureConfig {
   // Anchors
   anchorBoltDiameter: string; // "3/4" | "7/8" | "1"
   anchorPlateThickness: number; // in mm, e.g. 12
+
+  // Interactive variations requested by Marcelo Escudero
+  structureShape?: 'flat' | 'curved' | 'v_shaped';
+  columnType?: 'tubing' | 'high_tension' | 'lattice_antenna';
 }
 
 export interface MaterialItem {

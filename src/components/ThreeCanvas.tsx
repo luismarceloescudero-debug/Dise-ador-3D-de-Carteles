@@ -2,24 +2,42 @@ import React, { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { StructureConfig, SelectedComponent3D } from '../types';
-import { Camera, Eye, Layers, Compass, Move3d, ShieldAlert, Search, Maximize2 } from 'lucide-react';
+import { 
+  Camera, 
+  Eye, 
+  Layers, 
+  Compass, 
+  Move3d, 
+  ShieldAlert, 
+  Search, 
+  Maximize2,
+  Plus,
+  Minus,
+  Wrench
+} from 'lucide-react';
 
 interface ThreeCanvasProps {
   config: StructureConfig;
+  onChangeConfig?: React.Dispatch<React.SetStateAction<StructureConfig>>;
   selectedComponent: SelectedComponent3D;
   onSelectComponent: (component: SelectedComponent3D) => void;
   showSkeletonTransparent: boolean;
   showSubterranean: boolean;
   isARMode: boolean;
+  assemblyLevel?: number;
+  setAssemblyLevel?: (level: number) => void;
 }
 
 export default function ThreeCanvas({
   config,
+  onChangeConfig,
   selectedComponent,
   onSelectComponent,
   showSkeletonTransparent,
   showSubterranean,
-  isARMode
+  isARMode,
+  assemblyLevel = 100,
+  setAssemblyLevel
 }: ThreeCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -161,6 +179,13 @@ export default function ThreeCanvas({
     const colCount = config.columnCount;
     const fW = config.foundationWidth / 100;
     const fD = config.foundationDepth / 100;
+
+    const showFoundations = assemblyLevel >= 15;
+    const showColumns = assemblyLevel >= 35;
+    const showAnchors = assemblyLevel >= 35;
+    const showMarco = assemblyLevel >= 55;
+    const showSkeleton = assemblyLevel >= 75;
+    const showChapa = assemblyLevel >= 95;
 
     // 1. SAFE LAZY WEBGL RENDERER INITIALIZATION
     let renderer = rendererRef.current;
@@ -454,211 +479,355 @@ export default function ThreeCanvas({
     const colMat = getMaterialForPart('columns', tubingMaterial);
     
     colHorizontalPositions.forEach((colX) => {
-      // Vertical Column cylinder
-      const colGeo = new THREE.CylinderGeometry(pipeDiameter/2, pipeDiameter/2, colTotalLength, 24);
-      const colMesh = new THREE.Mesh(colGeo, colMat);
-      
       // Bottom rests buried (y = -buried), top climbs up to (clearance + insertMeters).
       // Center of this length is exactly (clearance + insertMeters - buried) / 2
       const colYCenter = (clearance + insertMeters - buried) / 2;
       // Position column directly touching the back face of client mounting rails
       const colZ = -pipeThick - (pipeDiameter/2);
-      colMesh.position.set(colX, colYCenter, colZ);
-      registerPartMesh(colMesh, 'columns');
-      assemblyGroup.add(colMesh);
 
-      // BASE INTERFACES: Heavy Structural Weld Steel Baseplates
+      // Vertical Column cylinder
+      if (showColumns) {
+        const colType = config.columnType || 'tubing';
+        
+        if (colType === 'lattice_antenna') {
+          // Torre Reticulada de Antena (Lattice Tower) - 4 vertical legs + internal trusses
+          const legRadius = pipeDiameter * 0.18;
+          const halfWidth = 0.22; // width of tower is 44cm
+          
+          // Outer Legs
+          const offsets = [
+            { x: -halfWidth, z: -halfWidth },
+            { x: halfWidth, z: -halfWidth },
+            { x: -halfWidth, z: halfWidth },
+            { x: halfWidth, z: halfWidth }
+          ];
+          
+          const legGeo = new THREE.CylinderGeometry(legRadius, legRadius, colTotalLength, 12);
+          offsets.forEach(offset => {
+            const legMesh = new THREE.Mesh(legGeo, colMat);
+            legMesh.position.set(colX + offset.x, colYCenter, colZ + offset.z);
+            registerPartMesh(legMesh, 'columns');
+            assemblyGroup.add(legMesh);
+          });
+          
+          // Internal Bracing segments along height
+          const segmentsCount = Math.floor(colTotalLength / 0.42);
+          const braceMat = getMaterialForPart('columns', steelMaterial);
+          
+          for (let s = 0; s < segmentsCount; s++) {
+            const hFraction = s / segmentsCount;
+            const yPos = -buried + hFraction * colTotalLength;
+            
+            // Draw horizontal ring struts
+            const horizGeo = new THREE.BoxGeometry(halfWidth * 2, legRadius * 0.8, legRadius * 0.8);
+            
+            // X-dir horizontal pieces
+            const rX1 = new THREE.Mesh(horizGeo, braceMat);
+            rX1.position.set(colX, yPos, colZ - halfWidth);
+            assemblyGroup.add(rX1);
+            
+            const rX2 = new THREE.Mesh(horizGeo, braceMat);
+            rX2.position.set(colX, yPos, colZ + halfWidth);
+            assemblyGroup.add(rX2);
+            
+            // Z-dir horizontal pieces
+            const horizZGeo = new THREE.BoxGeometry(legRadius * 0.8, legRadius * 0.8, halfWidth * 2);
+            const rZ1 = new THREE.Mesh(horizZGeo, braceMat);
+            rZ1.position.set(colX - halfWidth, yPos, colZ);
+            assemblyGroup.add(rZ1);
+            
+            const rZ2 = new THREE.Mesh(horizZGeo, braceMat);
+            rZ2.position.set(colX + halfWidth, yPos, colZ);
+            assemblyGroup.add(rZ2);
+            
+            // Zigzag diagonal braces
+            if (s < segmentsCount - 1) {
+              const diagGeo = new THREE.CylinderGeometry(0.008, 0.008, halfWidth * 2.8, 8);
+              const dMesh = new THREE.Mesh(diagGeo, braceMat);
+              dMesh.position.set(colX, yPos + 0.21, colZ);
+              dMesh.rotation.z = Math.PI / 4 * (s % 2 === 0 ? 1 : -1);
+              assemblyGroup.add(dMesh);
+            }
+          }
+        } else if (colType === 'high_tension') {
+          // Poste con diseño de Tendido Eléctrico de Alta Tensión
+          const colGeo = new THREE.CylinderGeometry(pipeDiameter * 0.4, pipeDiameter, colTotalLength, 24);
+          const colMesh = new THREE.Mesh(colGeo, colMat);
+          colMesh.position.set(colX, colYCenter, colZ);
+          registerPartMesh(colMesh, 'columns');
+          assemblyGroup.add(colMesh);
+          
+          // Add 2 Heavy Duty crossarms / brazos cruceta at active heights
+          const armGeo = new THREE.BoxGeometry(1.6, pipeDiameter * 0.6, pipeDiameter * 0.6);
+          const armMat = getMaterialForPart('columns', steelMaterial);
+          
+          const armY1 = clearance - 0.2;
+          const arm1 = new THREE.Mesh(armGeo, armMat);
+          arm1.position.set(colX, armY1, colZ);
+          registerPartMesh(arm1, 'columns');
+          assemblyGroup.add(arm1);
+          
+          const armY2 = clearance + insertMeters * 0.7;
+          const arm2 = new THREE.Mesh(armGeo, armMat);
+          arm2.position.set(colX, armY2, colZ);
+          registerPartMesh(arm2, 'columns');
+          assemblyGroup.add(arm2);
+          
+          // Insulators details
+          const insulatorGeo = new THREE.CylinderGeometry(0.035, 0.035, 0.16, 12);
+          const insMat = getMaterialForPart('columns', concreteMaterial);
+          
+          [-0.7, 0.7].forEach(offset => {
+            const ins1 = new THREE.Mesh(insulatorGeo, insMat);
+            ins1.position.set(colX + offset, armY1 - 0.08, colZ);
+            assemblyGroup.add(ins1);
+            
+            const ins2 = new THREE.Mesh(insulatorGeo, insMat);
+            ins2.position.set(colX + offset, armY2 - 0.08, colZ);
+            assemblyGroup.add(ins2);
+          });
+        } else {
+          // Standard Heavy seamless tubing posts
+          const colGeo = new THREE.CylinderGeometry(pipeDiameter/2, pipeDiameter/2, colTotalLength, 24);
+          const colMesh = new THREE.Mesh(colGeo, colMat);
+          colMesh.position.set(colX, colYCenter, colZ);
+          registerPartMesh(colMesh, 'columns');
+          assemblyGroup.add(colMesh);
+        }
+      }
+
+      // BASE INTERFACES: Heavy Structural Weld Steel Baseplates + STIFFENERS (CARTELAS) + J-BOLTS
       const plateW = fW * 0.70;
       const plateH = fW * 0.70;
       const plateThick = config.anchorPlateThickness / 1000; // millimeters to meters
-      
-      const plateGeo = new THREE.BoxGeometry(plateW, plateThick, plateH);
-      const plateMat = getMaterialForPart('anchors', anchorPlatesMaterial);
-      const plateMesh = new THREE.Mesh(plateGeo, plateMat);
-      
-      // Anchoring base interface situated at exactly -buried depth
       const anchorY = -buried;
-      plateMesh.position.set(colX, anchorY, colZ);
-      registerPartMesh(plateMesh, 'anchors');
-      assemblyGroup.add(plateMesh);
 
-      // WELDED STIFFENERS (CARTELAS DE ARRIOSTRAMIENTO)
-      // 4 heavy triangular gusset plates welded between column wall and anchor plate to safeguard torque and wind shear.
-      const gussetWidth = 0.01; // 10mm thick plates
-      const gussetHeight = 0.16; // 160mm tall
-      const gussetDepth = 0.08;  // 80mm structural protrusion
-      const gussetMat = getMaterialForPart('anchors', anchorPlatesMaterial);
-      
-      const gNorthGeo = new THREE.BoxGeometry(gussetWidth, gussetHeight, gussetDepth);
-      const gNorth = new THREE.Mesh(gNorthGeo, gussetMat);
-      gNorth.position.set(colX, anchorY + gussetHeight/2, colZ + pipeDiameter/2 + gussetDepth/2);
-      registerPartMesh(gNorth, 'anchors');
-      assemblyGroup.add(gNorth);
+      if (showAnchors) {
+        const plateGeo = new THREE.BoxGeometry(plateW, plateThick, plateH);
+        const plateMat = getMaterialForPart('anchors', anchorPlatesMaterial);
+        const plateMesh = new THREE.Mesh(plateGeo, plateMat);
+        
+        plateMesh.position.set(colX, anchorY, colZ);
+        registerPartMesh(plateMesh, 'anchors');
+        assemblyGroup.add(plateMesh);
 
-      const gSouth = new THREE.Mesh(gNorthGeo, gussetMat);
-      gSouth.position.set(colX, anchorY + gussetHeight/2, colZ - pipeDiameter/2 - gussetDepth/2);
-      registerPartMesh(gSouth, 'anchors');
-      assemblyGroup.add(gSouth);
+        // WELDED STIFFENERS (CARTELAS DE ARRIOSTRAMIENTO DE ALTA RESISTENCIA)
+        const gussetWidth = 0.01; // 10mm thick plates
+        const gussetHeight = 0.16; // 160mm tall
+        const gussetDepth = 0.08;  // 80mm structural protrusion
+        const gussetMat = getMaterialForPart('anchors', anchorPlatesMaterial);
+        
+        const gNorthGeo = new THREE.BoxGeometry(gussetWidth, gussetHeight, gussetDepth);
+        const gNorth = new THREE.Mesh(gNorthGeo, gussetMat);
+        gNorth.position.set(colX, anchorY + gussetHeight/2, colZ + pipeDiameter/2 + gussetDepth/2);
+        registerPartMesh(gNorth, 'anchors');
+        assemblyGroup.add(gNorth);
 
-      const gEastGeo = new THREE.BoxGeometry(gussetDepth, gussetHeight, gussetWidth);
-      const gEast = new THREE.Mesh(gEastGeo, gussetMat);
-      gEast.position.set(colX + pipeDiameter/2 + gussetDepth/2, anchorY + gussetHeight/2, colZ);
-      registerPartMesh(gEast, 'anchors');
-      assemblyGroup.add(gEast);
+        const gSouth = new THREE.Mesh(gNorthGeo, gussetMat);
+        gSouth.position.set(colX, anchorY + gussetHeight/2, colZ - pipeDiameter/2 - gussetDepth/2);
+        registerPartMesh(gSouth, 'anchors');
+        assemblyGroup.add(gSouth);
 
-      const gWest = new THREE.Mesh(gEastGeo, gussetMat);
-      gWest.position.set(colX - pipeDiameter/2 - gussetDepth/2, anchorY + gussetHeight/2, colZ);
-      registerPartMesh(gWest, 'anchors');
-      assemblyGroup.add(gWest);
+        const gEastGeo = new THREE.BoxGeometry(gussetDepth, gussetHeight, gussetWidth);
+        const gEast = new THREE.Mesh(gEastGeo, gussetMat);
+        gEast.position.set(colX + pipeDiameter/2 + gussetDepth/2, anchorY + gussetHeight/2, colZ);
+        registerPartMesh(gEast, 'anchors');
+        assemblyGroup.add(gEast);
 
-      // HIGH RESISTANCE ASTM ADHESIVE J-BOLTS (PERNOS DE ANCLAJE ACERO ZINCADO)
-      // 4 threaded foundation rods per column embedded into concrete footings
-      const boltLength = 0.50; // 50cm pernos anchor
-      for (let bx = -1; bx <= 1; bx += 2) {
-        for (let bz = -1; bz <= 1; bz += 2) {
-          const boltGeo = new THREE.CylinderGeometry(0.014, 0.014, boltLength, 8);
-          const boltMat = getMaterialForPart('anchors', boltsMaterial);
-          const boltMesh = new THREE.Mesh(boltGeo, boltMat);
-          boltMesh.position.set(
-            colX + bx * (plateW/2 - 0.035),
-            anchorY + 0.12, // bolts head protrude above plate
-            colZ + bz * (plateH/2 - 0.035)
-          );
-          registerPartMesh(boltMesh, 'anchors');
-          assemblyGroup.add(boltMesh);
+        const gWest = new THREE.Mesh(gEastGeo, gussetMat);
+        gWest.position.set(colX - pipeDiameter/2 - gussetDepth/2, anchorY + gussetHeight/2, colZ);
+        registerPartMesh(gWest, 'anchors');
+        assemblyGroup.add(gWest);
+
+        // HIGH RESISTANCE ASTM ADHESIVE J-BOLTS (PERNOS DE ANCLAJE ACERO ZINCADO)
+        const boltLength = 0.50; // 50cm pernos anchor
+        for (let bx = -1; bx <= 1; bx += 2) {
+          for (let bz = -1; bz <= 1; bz += 2) {
+            const boltGeo = new THREE.CylinderGeometry(0.014, 0.014, boltLength, 8);
+            const boltMat = getMaterialForPart('anchors', boltsMaterial);
+            const boltMesh = new THREE.Mesh(boltGeo, boltMat);
+            boltMesh.position.set(
+              colX + bx * (plateW/2 - 0.035),
+              anchorY + 0.12, // bolts head protrude above plate
+              colZ + bz * (plateH/2 - 0.035)
+            );
+            registerPartMesh(boltMesh, 'anchors');
+            assemblyGroup.add(boltMesh);
+          }
         }
       }
 
       // SUBTERRANEAN CONCRETE FOUNDATION FOOTINGS (ZAPATAS DE HORMIGÓN ARMADO)
-      if (showSubterranean || isARMode) {
-        const footingGeo = new THREE.BoxGeometry(fW, fD, fW);
-        const footingMat = getMaterialForPart('foundation', concreteMaterial);
-        const footingMesh = new THREE.Mesh(footingGeo, footingMat);
-        footingMesh.position.set(colX, -fD/2, colZ);
-        registerPartMesh(footingMesh, 'foundation');
-        assemblyGroup.add(footingMesh);
+      if (showFoundations) {
+        if (showSubterranean || isARMode) {
+          const footingGeo = new THREE.BoxGeometry(fW, fD, fW);
+          const footingMat = getMaterialForPart('foundation', concreteMaterial);
+          const footingMesh = new THREE.Mesh(footingGeo, footingMat);
+          footingMesh.position.set(colX, -fD/2, colZ);
+          registerPartMesh(footingMesh, 'foundation');
+          assemblyGroup.add(footingMesh);
+        }
       }
     });
 
 
-    // 12. BUILD FRONT SHEETING PANEL (REVESTIMIENTO DE CHAPA FRONTAL SIDERCHAP)
-    const frontW = w;
-    const frontH = h;
+    // 12. AUXILIARY MODULAR FACE BUILDER FOR INTERACTIVE SHAPES
     const frontThick = 0.003; // Calibre 18 lisa (approx 1.2mm visual sheet)
-    
-    const sheetGeo = new THREE.BoxGeometry(frontW, frontH, frontThick);
-    const sheetMat = getMaterialForPart('chapa', activeBlueSheetMat);
-    const sheetMesh = new THREE.Mesh(sheetGeo, sheetMat);
-    // Sit cleanly at front face (Z=0.0)
-    sheetMesh.position.set(0, signYCenter, 0);
-    registerPartMesh(sheetMesh, 'chapa');
-    assemblyGroup.add(sheetMesh);
+    const buildBillboardFaceSegment = (faceW: number, faceH: number, posX: number, posZ: number, rotY: number) => {
+      const faceGroup = new THREE.Group();
+      faceGroup.position.set(posX, signYCenter, posZ);
+      faceGroup.rotation.y = rotY;
 
-
-    // 13. OUTER STRUCTURAL SKELETON FRAME (MARCO PERIMETRAL ESQUELETO)
-    // Always 4 sides (2 horizontal + 2 vertical)
-    const hBarGeo = new THREE.BoxGeometry(w, pipeThick, pipeThick);
-    const vBarGeo = new THREE.BoxGeometry(pipeThick, h - 2 * pipeThick, pipeThick);
-    const marcoMat = getMaterialForPart('marco', steelMaterial);
-
-    // Render horizontal frame bars (top and bottom)
-    const topBar = new THREE.Mesh(hBarGeo, marcoMat);
-    topBar.position.set(0, signYCenter + h/2 - pipeThick/2, -pipeThick/2);
-    registerPartMesh(topBar, 'marco');
-    assemblyGroup.add(topBar);
-
-    const bottomBar = new THREE.Mesh(hBarGeo, marcoMat);
-    bottomBar.position.set(0, signYCenter - h/2 + pipeThick/2, -pipeThick/2);
-    registerPartMesh(bottomBar, 'marco');
-    assemblyGroup.add(bottomBar);
-
-    // Render vertical frame bars (left and right)
-    const leftBar = new THREE.Mesh(vBarGeo, marcoMat);
-    leftBar.position.set(-w/2 + pipeThick/2, signYCenter, -pipeThick/2);
-    registerPartMesh(leftBar, 'marco');
-    assemblyGroup.add(leftBar);
-
-    const rightBar = new THREE.Mesh(vBarGeo, marcoMat);
-    rightBar.position.set(w/2 - pipeThick/2, signYCenter, -pipeThick/2);
-    registerPartMesh(rightBar, 'marco');
-    assemblyGroup.add(rightBar);
-
-
-    // 14. INTERNAL BRACING GRID ESQUELETO (CUADRÍCULA INTERNA 40x40x2)
-    const innerPipeWCount = Math.max(0, config.gridCols - 2); 
-    const innerPipeHCount = Math.max(0, config.gridRows - 2); 
-    const skeletonMat = getMaterialForPart('skeleton', innerSkeletonMaterial);
-    
-    const innerPipeThick = config.skeletonProfile === '40x40x2' ? 0.04 
-                         : config.skeletonProfile === '40x40x2.5' ? 0.04 
-                         : 0.03;
-
-    // A. Vertical Struts
-    if (innerPipeWCount > 0) {
-      const stepVerticalStrut = w / (innerPipeWCount + 1);
-      const strutHeight = h - 2 * pipeThick; // inside clearance heights
-      const vertStrutGeo = new THREE.BoxGeometry(innerPipeThick, strutHeight, innerPipeThick);
-
-      for (let vi = 1; vi <= innerPipeWCount; vi++) {
-        const strutX = -w/2 + vi * stepVerticalStrut;
-        const vertStrut = new THREE.Mesh(vertStrutGeo, skeletonMat);
-        // Pack inside the frame thickness
-        vertStrut.position.set(strutX, signYCenter, -pipeThick/2);
-        registerPartMesh(vertStrut, 'skeleton');
-        assemblyGroup.add(vertStrut);
+      // Draw Chapa
+      if (showChapa) {
+        const sheetGeo = new THREE.BoxGeometry(faceW, faceH, frontThick);
+        const sheetMat = getMaterialForPart('chapa', activeBlueSheetMat);
+        const sheetMesh = new THREE.Mesh(sheetGeo, sheetMat);
+        sheetMesh.position.set(0, 0, 0); // Local center
+        registerPartMesh(sheetMesh, 'chapa');
+        faceGroup.add(sheetMesh);
       }
-    }
 
-    // B. Horizontal Struts
-    if (innerPipeHCount > 0) {
-      const stepHorizontalStrut = h / (innerPipeHCount + 1);
-      const strutWidth = w - 2 * pipeThick; // inside clearance width
-      const horizStrutGeo = new THREE.BoxGeometry(strutWidth, innerPipeThick, innerPipeThick);
+      // Draw Marco perimetral
+      if (showMarco) {
+        const hBarGeo = new THREE.BoxGeometry(faceW, pipeThick, pipeThick);
+        const vBarGeo = new THREE.BoxGeometry(pipeThick, faceH - 2 * pipeThick, pipeThick);
+        const marcoMat = getMaterialForPart('marco', steelMaterial);
 
-      for (let hi = 1; hi <= innerPipeHCount; hi++) {
-        const strutY = signYCenter - h/2 + hi * stepHorizontalStrut;
-        const horizStrut = new THREE.Mesh(horizStrutGeo, skeletonMat);
-        // Offset slightly behind the vertical struts inside frame to represent weld joint overlap realistically!
-        horizStrut.position.set(0, strutY, -pipeThick/2 - 0.002);
-        registerPartMesh(horizStrut, 'skeleton');
-        assemblyGroup.add(horizStrut);
+        const topBar = new THREE.Mesh(hBarGeo, marcoMat);
+        topBar.position.set(0, faceH/2 - pipeThick/2, -pipeThick/2);
+        registerPartMesh(topBar, 'marco');
+        faceGroup.add(topBar);
+
+        const bottomBar = new THREE.Mesh(hBarGeo, marcoMat);
+        bottomBar.position.set(0, -faceH/2 + pipeThick/2, -pipeThick/2);
+        registerPartMesh(bottomBar, 'marco');
+        faceGroup.add(bottomBar);
+
+        const leftBar = new THREE.Mesh(vBarGeo, marcoMat);
+        leftBar.position.set(-faceW/2 + pipeThick/2, 0, -pipeThick/2);
+        registerPartMesh(leftBar, 'marco');
+        faceGroup.add(leftBar);
+
+        const rightBar = new THREE.Mesh(vBarGeo, marcoMat);
+        rightBar.position.set(faceW/2 - pipeThick/2, 0, -pipeThick/2);
+        registerPartMesh(rightBar, 'marco');
+        faceGroup.add(rightBar);
       }
-    }
 
-    // C. Wind Braces (Cruz de San Andrés)
-    if (config.gridPattern === 'diagonal_cross' && innerPipeWCount > 0) {
-      const stepVert = w / (innerPipeWCount + 1);
-      const stepHoriz = h / (innerPipeHCount + 1);
-      
-      const beamGeo = (len: number, angle: number, posX: number, posY: number, isRight: boolean) => {
-        const geo = new THREE.BoxGeometry(innerPipeThick * 0.70, len, innerPipeThick * 0.60);
-        const mesh = new THREE.Mesh(geo, skeletonMat);
-        mesh.rotation.z = isRight ? -angle : angle;
-        // place on the interior pocket
-        mesh.position.set(posX, posY, -pipeThick/2 - 0.005);
-        registerPartMesh(mesh, 'skeleton');
-        assemblyGroup.add(mesh);
-      };
-
-      for (let vi = 0; vi <= innerPipeWCount; vi++) {
-        const cellLeft = -w/2 + vi * stepVert;
-        const cellRight = cellLeft + stepVert;
-        const cellCenterX = (cellLeft + cellRight) / 2;
+      // Draw Skeleton Grid (Enrejado)
+      if (showSkeleton) {
+        const innerPipeWCount = Math.max(0, config.gridCols - 2); 
+        const innerPipeHCount = Math.max(0, config.gridRows - 2); 
+        const skeletonMat = getMaterialForPart('skeleton', innerSkeletonMaterial);
         
-        for (let hi = 0; hi <= innerPipeHCount; hi++) {
-          const cellBottom = signYCenter - h/2 + hi * stepHoriz;
-          const cellTop = cellBottom + stepHoriz;
-          const cellCenterY = (cellBottom + cellTop) / 2;
-          
-          const widthSec = stepVert;
-          const heightSec = stepHoriz;
-          const diagLen = Math.sqrt(widthSec * widthSec + heightSec * heightSec);
-          const angle = Math.atan2(widthSec, heightSec);
+        const innerPipeThick = config.skeletonProfile === '40x40x2' ? 0.04 
+                             : config.skeletonProfile === '40x40x2.5' ? 0.04 
+                             : 0.03;
 
-          beamGeo(diagLen, angle, cellCenterX, cellCenterY, true);
-          beamGeo(diagLen, angle, cellCenterX, cellCenterY, false);
+        // A. Vertical Struts
+        if (innerPipeWCount > 0) {
+          const stepVerticalStrut = faceW / (innerPipeWCount + 1);
+          const strutHeight = faceH - 2 * pipeThick;
+          const vertStrutGeo = new THREE.BoxGeometry(innerPipeThick, strutHeight, innerPipeThick);
+
+          for (let vi = 1; vi <= innerPipeWCount; vi++) {
+            const strutX = -faceW/2 + vi * stepVerticalStrut;
+            const vertStrut = new THREE.Mesh(vertStrutGeo, skeletonMat);
+            vertStrut.position.set(strutX, 0, -pipeThick/2);
+            registerPartMesh(vertStrut, 'skeleton');
+            faceGroup.add(vertStrut);
+          }
+        }
+
+        // B. Horizontal Struts
+        if (innerPipeHCount > 0) {
+          const stepHorizontalStrut = faceH / (innerPipeHCount + 1);
+          const strutWidth = faceW - 2 * pipeThick;
+          const horizStrutGeo = new THREE.BoxGeometry(strutWidth, innerPipeThick, innerPipeThick);
+
+          for (let hi = 1; hi <= innerPipeHCount; hi++) {
+            const strutY = -faceH/2 + hi * stepHorizontalStrut;
+            const horizStrut = new THREE.Mesh(horizStrutGeo, skeletonMat);
+            horizStrut.position.set(0, strutY, -pipeThick/2 - 0.002);
+            registerPartMesh(horizStrut, 'skeleton');
+            faceGroup.add(horizStrut);
+          }
+        }
+
+        // C. Wind Braces (Cruz de San Andrés)
+        if (config.gridPattern === 'diagonal_cross' && innerPipeWCount > 0) {
+          const stepVert = faceW / (innerPipeWCount + 1);
+          const stepHoriz = faceH / (innerPipeHCount + 1);
+          
+          const beamGeo = (len: number, angle: number, posX: number, posY: number, isRight: boolean) => {
+            const geo = new THREE.BoxGeometry(innerPipeThick * 0.70, len, innerPipeThick * 0.60);
+            const mesh = new THREE.Mesh(geo, skeletonMat);
+            mesh.rotation.z = isRight ? -angle : angle;
+            mesh.position.set(posX, posY, -pipeThick/2 - 0.005);
+            registerPartMesh(mesh, 'skeleton');
+            faceGroup.add(mesh);
+          };
+
+          for (let vi = 0; vi <= innerPipeWCount; vi++) {
+            const cellLeft = -faceW/2 + vi * stepVert;
+            const cellRight = cellLeft + stepVert;
+            const cellCenterX = (cellLeft + cellRight) / 2;
+            
+            for (let hi = 0; hi <= innerPipeHCount; hi++) {
+              const cellBottom = -faceH/2 + hi * stepHoriz;
+              const cellTop = cellBottom + stepHoriz;
+              const cellCenterY = (cellBottom + cellTop) / 2;
+              
+              const widthSec = stepVert;
+              const heightSec = stepHoriz;
+              const diagLen = Math.sqrt(widthSec * widthSec + heightSec * heightSec);
+              const angle = Math.atan2(widthSec, heightSec);
+
+              beamGeo(diagLen, angle, cellCenterX, cellCenterY, true);
+              beamGeo(diagLen, angle, cellCenterX, cellCenterY, false);
+            }
+          }
         }
       }
+
+      assemblyGroup.add(faceGroup);
+    };
+
+    // Render the structured layout depending on config.structureShape
+    const structShape = config.structureShape || 'flat';
+
+    if (structShape === 'curved') {
+      // Three-faced segmented curve for aerodynamic wind shedding
+      const centerW = w * 0.50;
+      const wingW = w * 0.25;
+      const angle = 0.26; // approx 15 degrees
+      
+      buildBillboardFaceSegment(centerW, h, 0, 0, 0);
+      
+      const leftShiftX = -(centerW/2 + (wingW/2) * Math.cos(angle));
+      const leftShiftZ = -(wingW/2) * Math.sin(angle);
+      buildBillboardFaceSegment(wingW, h, leftShiftX, leftShiftZ, angle);
+      
+      const rightShiftX = centerW/2 + (wingW/2) * Math.cos(angle);
+      const rightShiftZ = -(wingW/2) * Math.sin(angle);
+      buildBillboardFaceSegment(wingW, h, rightShiftX, rightShiftZ, -angle);
+      
+    } else if (structShape === 'v_shaped') {
+      // Double sided V-shape billboard for bidirectional highways
+      const vFaceW = w * 0.65;
+      const vAngle = 0.38; // approx 22 degrees
+      
+      const shiftX = (vFaceW/2) * Math.cos(vAngle);
+      const shiftZ = -(vFaceW/2) * Math.sin(vAngle) + 0.1;
+      
+      // Left and right angled faces
+      buildBillboardFaceSegment(vFaceW, h, -shiftX, shiftZ, vAngle);
+      buildBillboardFaceSegment(vFaceW, h, shiftX, shiftZ, -vAngle);
+      
+    } else {
+      // Classic flat single side billboard
+      buildBillboardFaceSegment(w, h, 0, 0, 0);
     }
 
 
@@ -751,10 +920,10 @@ export default function ThreeCanvas({
       canvas.removeEventListener('click', onCanvasClick);
       canvas.removeEventListener('pointermove', onCanvasPointerMove);
     };
-  }, [config, selectedComponent, hoveredPart, showSkeletonTransparent, showSubterranean, isARMode, arScale, arRotation, arYOffset, arZOffset, webglError]);
+  }, [config, selectedComponent, hoveredPart, showSkeletonTransparent, showSubterranean, isARMode, arScale, arRotation, arYOffset, arZOffset, webglError, assemblyLevel]);
 
   return (
-    <div className="relative w-full h-[480px] bg-slate-900 rounded-2xl overflow-hidden border border-slate-700/50 shadow-2xl">
+    <div className="relative w-full h-full bg-slate-900 rounded-2xl overflow-hidden border border-slate-700/50 shadow-2xl">
       {webglError ? (
         <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-slate-950/80 backdrop-blur-sm z-30">
           <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-500 mb-4 animate-pulse">
@@ -818,29 +987,273 @@ export default function ThreeCanvas({
         </>
       )}
 
-      {/* Canvas Top overlay HUD panel */}
-      <div className="absolute top-4 left-4 z-20 flex flex-col gap-2 max-w-[280px]">
-        <div className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-900/95 backdrop-blur-md rounded-lg text-xs font-medium text-slate-100 border border-slate-700 shadow-lg">
-          <Layers className="w-3.5 h-3.5 text-orange-500" />
-          <span>Vista {isARMode ? 'de Realidad Aumentada (RA)' : '3D Estructural'}</span>
+      {/* Canvas Top overlay HUD panel with Interactive Live Cad, Piece Palette, Column Config & Assembly Simulator */}
+      <div className="absolute top-4 left-4 z-20 flex flex-col gap-2.5 max-w-[310px] max-h-[85%] overflow-y-auto pr-1 select-none pointer-events-auto bg-slate-950/95 backdrop-blur-md p-3.5 rounded-xl border border-slate-800 shadow-2xl scrollbar-thin scrollbar-thumb-slate-800">
+        <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+          <div className="flex items-center gap-1.5 text-slate-100">
+            <Wrench className="w-4 h-4 text-cyan-400" />
+            <span className="text-xs font-black uppercase tracking-wider">Taller Mendoza: Despiece CAD</span>
+          </div>
+          <span className="text-[9px] bg-cyan-600/30 text-cyan-300 font-extrabold px-1.5 py-0.5 rounded leading-none">VIVO</span>
         </div>
-        
+
+        {/* Selected piece visual banner */}
         {selectedComponent !== 'none' && (
-          <div className="flex flex-col gap-1 p-2.5 bg-orange-600/95 backdrop-blur-md rounded-lg text-xs text-white border border-orange-500 shadow-lg animate-pulse">
-            <span className="font-bold uppercase tracking-wider text-[10px]">Pieza Seleccionada:</span>
-            <span className="font-semibold text-sm">
-              {selectedComponent === 'marco' ? `Marco Estructural (${config.marcoProfile.replace(/x[0-9]+$/, '').replace(/x/g, 'x')})` :
-               selectedComponent === 'skeleton' ? `Esqueleto / Cuadrícula (${config.skeletonProfile.replace(/x[0-9.]+$/, '').replace(/x/g, 'x')})` :
-               selectedComponent === 'chapa' ? 'Revestimiento de Chapas N-18' :
-               selectedComponent === 'columns' ? `Postes Caño Tubing (${config.columnProfile === 'tubing_2_7_8' ? '2 7/8"' : config.columnProfile === 'tubing_3_1_2' ? '3 1/2"' : '114 mm'})` :
-               selectedComponent === 'foundation' ? 'Cimentación de Hormigón' :
-               'Anclajes y Pernos de Viento'}
-            </span>
-            <span className="text-[11px] text-orange-200">
-              Haz cambios en el panel derecho para editar este elemento en vivo.
+          <div className="p-2 bg-orange-600/15 border border-orange-500/30 rounded-lg text-[11px] text-orange-300 leading-snug">
+            <span className="font-extrabold uppercase text-[9px] text-orange-400 block tracking-wider">Pieza en Edición:</span>
+            <span className="font-bold text-slate-100">
+              {selectedComponent === 'marco' ? `Marco Extructural (${config.marcoProfile})` :
+               selectedComponent === 'skeleton' ? `Grilla Bracing (${config.skeletonProfile})` :
+               selectedComponent === 'chapa' ? 'Revestimiento frente N-18' :
+               selectedComponent === 'columns' ? `Postes (${config.columnType === 'lattice_antenna' ? 'Reticulado' : config.columnProfile === 'tubing_3_1_2' ? 'Tubing 3 ½"' : 'Tubing 2 ⅞"'})` :
+               selectedComponent === 'foundation' ? 'Fundación Hormigón H25' :
+               'Kit de Anclajes de Viento'}
             </span>
           </div>
         )}
+
+        {/* 1. SECCIÓN COLUMNAS / POSTES (INTERACTIVIDAD EN VIVO SOLICITADA) */}
+        <div className="space-y-2 text-left">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">⚡ Postes Estructurales</span>
+            
+            <div className="flex items-center gap-1 bg-slate-900 rounded border border-slate-800 p-0.5">
+              <button
+                type="button"
+                onClick={() => {
+                  if (onChangeConfig) {
+                    onChangeConfig(prev => ({ ...prev, columnCount: Math.max(1, prev.columnCount - 1) }));
+                  }
+                }}
+                className="p-0.5 hover:text-white hover:bg-slate-800 rounded text-slate-400 transition cursor-pointer"
+                title="Quitar un poste de soporte (-)"
+              >
+                <Minus className="w-3 h-3" />
+              </button>
+              <span className="text-xs font-black text-white px-2 font-mono">{config.columnCount}</span>
+              <button
+                type="button"
+                onClick={() => {
+                  if (onChangeConfig) {
+                    onChangeConfig(prev => ({ ...prev, columnCount: Math.min(10, prev.columnCount + 1) }));
+                  }
+                }}
+                className="p-0.5 hover:text-white hover:bg-slate-800 rounded text-slate-400 transition cursor-pointer"
+                title="Agregar un poste de soporte (+)"
+              >
+                <Plus className="w-3 h-3" />
+              </button>
+            </div>
+          </div>
+
+          {/* Selector de tipo de poste en vivo */}
+          <div className="grid grid-cols-2 gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                if (onChangeConfig) {
+                  onChangeConfig(prev => ({ ...prev, columnType: 'tubing' }));
+                }
+              }}
+              className={`p-2 rounded-lg text-left border transition-all cursor-pointer ${
+                (config.columnType || 'tubing') === 'tubing'
+                  ? 'bg-cyan-950/45 border-cyan-500 text-white shadow-[0_0_10px_rgba(6,182,212,0.15)]'
+                  : 'bg-slate-900/60 border-slate-850 text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <div className="text-[10.5px] font-black leading-none mb-1">🔴 Caño Tubing</div>
+              <div className="text-[8.5px] text-slate-500 font-mono leading-none">3 ½" / 2 ⅞" Pozo</div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (onChangeConfig) {
+                  onChangeConfig(prev => ({ ...prev, columnType: 'lattice_antenna' }));
+                }
+              }}
+              className={`p-2 rounded-lg text-left border transition-all cursor-pointer ${
+                config.columnType === 'lattice_antenna'
+                  ? 'bg-cyan-950/45 border-cyan-500 text-white shadow-[0_0_10px_rgba(6,182,212,0.15)]'
+                  : 'bg-slate-900/60 border-slate-850 text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <div className="text-[10.5px] font-black leading-none mb-1">🗼 Torre Reticulada</div>
+              <div className="text-[8.5px] text-slate-500 font-mono leading-none">Celosía Antena 44cm</div>
+            </button>
+          </div>
+        </div>
+
+        {/* 2. ARRIOSTRAMIENTO / RESISTENCIA VIENTO EN VIVO */}
+        <div className="space-y-2 border-t border-slate-900 pt-2 text-left">
+          <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider block">🕸️ Esqueleto Contra-Viento</span>
+          <div className="grid grid-cols-2 gap-1.5">
+            <button
+              type="button"
+              onClick={() => {
+                if (onChangeConfig) {
+                  onChangeConfig(prev => ({ ...prev, gridPattern: 'diagonal_cross' }));
+                }
+              }}
+              className={`p-2 rounded-lg text-left border transition-all cursor-pointer ${
+                config.gridPattern === 'diagonal_cross'
+                  ? 'bg-cyan-950/45 border-cyan-500 text-white'
+                  : 'bg-slate-900/60 border-slate-850 text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <div className="text-[10.5px] font-black leading-none mb-1">Cruz de San Andrés</div>
+              <div className="text-[8.5px] text-cyan-500 font-bold leading-none">Alta Carga Zonda</div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (onChangeConfig) {
+                  onChangeConfig(prev => ({ ...prev, gridPattern: 'standard' }));
+                }
+              }}
+              className={`p-2 rounded-lg text-left border transition-all cursor-pointer ${
+                config.gridPattern === 'standard'
+                  ? 'bg-cyan-950/45 border-cyan-500 text-white'
+                  : 'bg-slate-900/60 border-slate-850 text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <div className="text-[10.5px] font-black leading-none mb-1">Regilla Recta</div>
+              <div className="text-[8.5px] text-slate-500 leading-none">Tránsito Normal</div>
+            </button>
+          </div>
+        </div>
+
+        {/* 3. SIMULADOR DE ENSAMBLADO EN VIVO */}
+        <div className="space-y-2 border-t border-slate-900 pt-2 text-left">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">🔬 Estado de Montaje ({assemblyLevel}%)</span>
+          </div>
+
+          {/* Sliders and fast action buttons inside canvas HUD */}
+          <div className="flex gap-1">
+            <button
+              type="button"
+              onClick={() => setAssemblyLevel?.(0)}
+              className={`flex-1 py-1 px-1 bg-slate-900 border text-[9px] font-black rounded text-center transition cursor-pointer ${
+                assemblyLevel === 0 ? 'border-cyan-500 text-white bg-cyan-950/20' : 'border-slate-800 text-slate-400'
+              }`}
+            >
+              0% (Excavación)
+            </button>
+            <button
+              type="button"
+              onClick={() => setAssemblyLevel?.(55)}
+              className={`flex-1 py-1 px-1 bg-slate-900 border text-[9px] font-black rounded text-center transition cursor-pointer ${
+                assemblyLevel === 55 ? 'border-indigo-500 text-white bg-indigo-950/20' : 'border-slate-800 text-slate-400'
+              }`}
+            >
+              55% (Estructura)
+            </button>
+            <button
+              type="button"
+              onClick={() => setAssemblyLevel?.(100)}
+              className={`flex-1 py-1 px-1 bg-slate-900 border text-[9px] font-black rounded text-center transition cursor-pointer ${
+                assemblyLevel === 100 ? 'border-emerald-500 text-white bg-emerald-950/20' : 'border-slate-800 text-slate-400'
+              }`}
+            >
+              100% (Cartel)
+            </button>
+          </div>
+        </div>
+
+        {/* 4. PIEZAS FLOTANTES A UN COSTADO / DESPIECE FÍSICO */}
+        <div className="space-y-1.5 border-t border-slate-900 pt-2.5 text-left">
+          <span className="text-[10px] font-black uppercase text-amber-500 tracking-widest block mb-1">📦 PIEZAS FLOTANTES (Seleccionables)</span>
+          <div className="space-y-1">
+            {/* Cimientos */}
+            <div 
+              onClick={() => onSelectComponent('foundation')}
+              className={`p-2 rounded-lg bg-slate-900/40 border text-[10px] flex items-center justify-between cursor-pointer transition-all ${
+                selectedComponent === 'foundation' ? 'border-cyan-500 bg-cyan-950/20 text-white' : 'border-slate-850 text-slate-400 hover:border-slate-700'
+              }`}
+            >
+              <div className="flex items-center gap-1.5">
+                <span className="text-amber-500 leading-none">🪨</span>
+                <div>
+                  <div className="font-extrabold text-slate-200">Fundación ({config.foundationWidth}x{config.foundationWidth} cm)</div>
+                  <div className="text-[8.5px] text-slate-500 font-mono">Hormigón {config.foundationConcreteGrade} • Prof. {config.columnBuriedDepth}cm</div>
+                </div>
+              </div>
+              <span className="font-mono text-[9px] bg-slate-800 px-1 py-0.5 rounded text-amber-400 font-black">x{config.columnCount} u</span>
+            </div>
+
+            {/* Postes */}
+            <div 
+              onClick={() => onSelectComponent('columns')}
+              className={`p-2 rounded-lg bg-slate-900/40 border text-[10px] flex items-center justify-between cursor-pointer transition-all ${
+                selectedComponent === 'columns' ? 'border-cyan-500 bg-cyan-950/20 text-white' : 'border-slate-850 text-slate-400 hover:border-slate-700'
+              }`}
+            >
+              <div className="flex items-center gap-1.5">
+                <span className="text-cyan-400 leading-none">🗼</span>
+                <div>
+                  <div className="font-extrabold text-slate-200">
+                    {config.columnType === 'lattice_antenna' ? 'Torres de Antena' : 'Caño Tubing Petrolero'}
+                  </div>
+                  <div className="text-[8.5px] text-slate-500 font-mono">Esp: {config.columnProfile === 'tubing_3_1_2' ? '3.5"' : '2.875"'}</div>
+                </div>
+              </div>
+              <span className="font-mono text-[9px] bg-slate-800 px-1 py-0.5 rounded text-cyan-400 font-black">x{config.columnCount} u</span>
+            </div>
+
+            {/* Anclajes de viento */}
+            <div 
+              onClick={() => onSelectComponent('anchors')}
+              className={`p-2 rounded-lg bg-slate-900/40 border text-[10px] flex items-center justify-between cursor-pointer transition-all ${
+                selectedComponent === 'anchors' ? 'border-cyan-500 bg-cyan-950/20 text-white' : 'border-slate-850 text-slate-400 hover:border-slate-700'
+              }`}
+            >
+              <div className="flex items-center gap-1.5">
+                <span className="text-violet-400 leading-none">🔩</span>
+                <div>
+                  <div className="font-extrabold text-slate-200">Anclajes de Viento</div>
+                  <div className="text-[8.5px] text-slate-500 font-mono">Base {config.anchorPlateThickness}mm s/Cartelas de 3/8"</div>
+                </div>
+              </div>
+              <span className="font-mono text-[9px] bg-slate-800 px-1 py-0.5 rounded text-violet-400 font-black">x{config.columnCount} juego</span>
+            </div>
+
+            {/* Marco */}
+            <div 
+              onClick={() => onSelectComponent('marco')}
+              className={`p-2 rounded-lg bg-slate-900/40 border text-[10px] flex items-center justify-between cursor-pointer transition-all ${
+                selectedComponent === 'marco' ? 'border-cyan-500 bg-cyan-950/20 text-white' : 'border-slate-850 text-slate-400 hover:border-slate-700'
+              }`}
+            >
+              <div className="flex items-center gap-1.5">
+                <span className="text-emerald-400 leading-none">🖼️</span>
+                <div>
+                  <div className="font-extrabold text-slate-200">Bastidor Despiece Marco</div>
+                  <div className="text-[8.5px] text-slate-500 font-mono">Caño Rectangular {config.marcoProfile} mm</div>
+                </div>
+              </div>
+              <span className="font-mono text-[9px] bg-slate-800 px-1 py-0.5 rounded text-emerald-400 font-black">1 u</span>
+            </div>
+
+            {/* Skeleton */}
+            <div 
+              onClick={() => onSelectComponent('skeleton')}
+              className={`p-2 rounded-lg bg-slate-900/40 border text-[10px] flex items-center justify-between cursor-pointer transition-all ${
+                selectedComponent === 'skeleton' ? 'border-cyan-500 bg-cyan-950/20 text-white' : 'border-slate-850 text-slate-400 hover:border-slate-700'
+              }`}
+            >
+              <div className="flex items-center gap-1.5">
+                <span className="text-indigo-400 leading-none">🕸️</span>
+                <div>
+                  <div className="font-extrabold text-slate-200">Grilla Interna de Reparto</div>
+                  <div className="text-[8.5px] text-slate-500 font-mono">Caños de viento {config.skeletonProfile} mm</div>
+                </div>
+              </div>
+              <span className="font-mono text-[9px] bg-slate-800 px-1 py-0.5 rounded text-indigo-400 font-black">1 u</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* AR HUD Control Panel at the bottom of 3D frame when ARMode is active */}

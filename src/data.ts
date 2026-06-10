@@ -465,7 +465,7 @@ export function calculateMaterials(config: StructureConfig, customSuppliers?: Su
     description: `Abrazaderas pesadas de media caña plegadas a medida en chapa de 1/4" + de acople U-Bolt de 1/2" roscadas con tuercas dobles para vincular solidariamente cada poste Tubing con el marco de 60x60mm y costillas horizontales de 40x40mm de la cuadrícula.`
   };
   
-  // 5. CIMENTACIÓN (Base de hormigón: mezcla H21)
+  // 5. CIMENTACIÓN (Base de hormigón: mezcla H21/H25)
   const footingW = config.foundationWidth / 100;
   const footingD = config.foundationDepth / 100;
   const footingVol = footingW * footingW * footingD;
@@ -482,14 +482,14 @@ export function calculateMaterials(config: StructureConfig, customSuppliers?: Su
   
   const cimentacionItem: MaterialItem = {
     id: 'mat_cimentacion',
-    name: `Hormigón Elaborado ${config.foundationConcreteGrade} Estructural`,
+    name: `Hormigón Elaborado ${config.foundationConcreteGrade === 'H25' ? 'H-H25' : config.foundationConcreteGrade} Estructural`,
     category: 'cimentacion',
     quantity: Number(totalConcreteVolume.toFixed(2)),
     unit: 'm3',
     unitPrice: bestConcretePrice,
     supplier: 'HORMISERV SRL (Planta Propia)',
     totalPrice: Number((totalConcreteVolume * bestConcretePrice).toFixed(2)),
-    description: `Para cimentar los postes. Bases de sección de ${config.foundationWidth}x${config.foundationWidth} cm y profundidad de ${config.foundationDepth} cm. Total de ${colCount} pozos.`
+    description: `Dosificación de hormigón requerida para verter en pozos de cimentación para los postes de soporte. Cada pozo de fuste requiere sección de ${config.foundationWidth}x${config.foundationWidth} cm y profundidad de ${config.foundationDepth} cm. Cantidad exacta y necesaria calculada para los ${colCount} postes totales: ${Number(totalConcreteVolume.toFixed(2))} m³.`
   };
   
   // 6. ANCLAJES (Steel Plates & Pernos de anclaje)
@@ -507,14 +507,30 @@ export function calculateMaterials(config: StructureConfig, customSuppliers?: Su
   
   const anchorItem: MaterialItem = {
     id: 'mat_anclajes',
-    name: `Kits de Anclaje de Viento (Placa Base de ${config.anchorPlateThickness}mm x 560x560 + 4 Escuadras 80x160 + Perno J-Bolt ${config.anchorBoltDiameter}")`,
+    name: `Kits de Anclaje de Viento de Alta Resistencia (Placa de 12mm + 4 Escuadras 80x160 + Pernos ${config.anchorBoltDiameter === '3/4' ? '7/8"' : config.anchorBoltDiameter === '7/8' ? '7/8"' : config.anchorBoltDiameter + '"'})`,
     category: 'anclajes',
     quantity: colCount,
     unit: 'u',
     unitPrice: finalAnchorPrice,
     supplier: platina560Res.supplierName,
     totalPrice: colCount * finalAnchorPrice,
-    description: `Placas base de acero de 560x560mm soldadas en postes con 4 escuadras triangulares de refuerzo de 80x160mm + ${boltsCount} pernos de cimentación.`
+    description: `Detalle técnico del Kit de Arriostramiento:\n` +
+                 `• Placa Base de acero estructural de 560x560 mm cortada de chapa de 12 mm / (1/2") de espesor, perforada con ojales para pernos de 7/8".\n` +
+                 `• Refuerzos de unión: 4 escuadras triangulares de espesor 9.5 mm (3/8"), medidas de 80 mm de base por 160 mm de altura, para soldar perpendicularmente al tubo y base. Impide flexión y fatiga de soldadura.\n` +
+                 `📐 GUÍA DE ARMADO METALÚRGICO DE LA EMPRESA:\n` +
+                 `[+] Vista Superior Placa 560x560\n` +
+                 `  ┌───────── o ─────────┐\n` +
+                 `  │   ■             ■   │   Leyenda:\n` +
+                 `  │      ┌───────┐      │   ■ Ojales de 7/8" p/ Pernos\n` +
+                 `  │      │  (O)  │◄─────┼─── Poste Tubing en el centro\n` +
+                 `  │      └───────┘      │   ▲ 4 Escuadras de 80x160mm\n` +
+                 `  │   ■             ■   │\n` +
+                 `  └───────── o ─────────┘\n` +
+                 `[+] Vista Lateral Ensamble:\n` +
+                 `         ║       ║ ◄── Tubo de Poste\n` +
+                 `       ▲ ║       ║ ▲ ◄── Escuadras 80x160mm (Esp: 9.5mm)\n` +
+                 `     ╔═══╬═══════╬═══╗\n` +
+                 `     ╚═══╩═══════╩═══╝ ◄── Placa Base 560x560mm (Esp: 12mm)`
   };
   
   // 7. COMPLEMENTOS Y CONSUMIBLES (Tornillos, Electrodos y Pintura)

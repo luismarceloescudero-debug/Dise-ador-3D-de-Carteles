@@ -824,9 +824,6 @@ Se solicita cotización con desglose individual de los ítems con entrega en Men
                             </div>
                             
                             <div className="text-right shrink-0">
-                              <span className="block text-[9px] font-black text-slate-500 font-mono select-none">
-                                {formatPrice(mat.unitPrice)} c/u
-                              </span>
                             </div>
                           </div>
 
@@ -891,14 +888,18 @@ Se solicita cotización con desglose individual de los ítems con entrega en Men
                           </div>
                           
                           <div className="flex items-center justify-between text-[10.5px] font-bold text-slate-300 bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80 font-mono mt-1 w-full">
-                            <span className="text-[9px] text-slate-450 uppercase font-black tracking-normal">Cómputo en Vivo de Costo:</span>
+                            <span className="text-[9px] text-slate-450 uppercase font-black tracking-normal">Estado del Balance Cómputo:</span>
                             <div className="text-right space-y-0.5">
-                              <div className="text-slate-200 text-xs">Ajuste Neto: <strong className="text-cyan-450 font-extrabold">{formatPrice(mat.totalPrice)}</strong></div>
-                              {qtyDiff !== 0 && baselineQty > 0 && (
-                                <div className={`text-[9.5px] ${costDiff > 0 ? 'text-rose-500' : 'text-emerald-500'}`}>
-                                  {costDiff > 0 ? `Adicional: +${formatPrice(costDiff)}` : `Ahorro: -${formatPrice(Math.abs(costDiff))}`}
-                                </div>
-                              )}
+                              <span className={`text-xs font-bold ${qtyDiff > 0 ? 'text-amber-450' : qtyDiff < 0 ? 'text-emerald-450' : 'text-slate-450'}`}>
+                                {baselineQty === 0 
+                                  ? "NUEVA ESPECIFICACIÓN EN OBRA" 
+                                  : qtyDiff === 0 
+                                    ? "Cantidad Alineada con Diseño Base" 
+                                    : qtyDiff > 0 
+                                      ? `Requires Adicional: +${qtyDiff} ${mat.unit}`
+                                      : `Ahorro en Obra: ${qtyDiff} ${mat.unit}`
+                                }
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -907,16 +908,16 @@ Se solicita cotización con desglose individual de los ítems con entrega en Men
 
                     <div className="bg-slate-950/40 p-3 rounded-lg border border-slate-800 text-[9.5px] text-slate-400 leading-relaxed font-sans space-y-1">
                       <p className="font-bold text-slate-200 uppercase flex items-center gap-1">
-                        <span>📌 Declaración de Origen de Precios y Proveedores</span>
+                        <span>📌 Declaración de Cómputo de Estructura</span>
                       </p>
                       <p>
-                        • <strong>Hormigón elaborado ({config.foundationConcreteGrade}):</strong> Se cotiza de planta propia <strong>HORMISERV SRL</strong>.
+                        • <strong>Hormigón elaborado ({config.foundationConcreteGrade}):</strong> Volumen geométrico de excavación estimado por Constracad. Se aconseja sobredimensionar un 10% por pérdidas de excavación.
                       </p>
                       <p>
-                        • <strong>Siderúrgicos y bulonería:</strong> Los precios que figuran en pesos (ARS) son valores estimados netos de referencia obtenidos de relevamientos comerciales y listas de distribución mayoristas de Mendoza (Guaymallén, Coquimbito y Luján de Cuyo) de **Solimet de Grupo Camin S.A.** actualizados a Junio 2026.
+                        • <strong>Siderúrgicos y bulonería:</strong> Cantidades mecánicas netas obtenidas de las longitudes y áreas configuradas en el simulador 3D para fabricación en Mendoza.
                       </p>
                       <p>
-                        • <strong>Recomendación técnica:</strong> Dado el contexto inflacionario de plaza, use los textos técnicos de pedido generados para remitirlos a las distribuidoras indicadas o de su confianza para recibir una cotización formal.
+                        • <strong>Recomendación técnica:</strong> Utilice los textos técnicos de pedido generados a continuación para remitirlos a las distribuidoras siderúrgicas a fin de recibir cotizaciones formales.
                       </p>
                     </div>
                   </div>
