@@ -309,6 +309,13 @@ export function calculateMaterials(config: StructureConfig, customSuppliers?: Su
     const diagCount = (cols + 1) * (rows + 1);
     const diagonals = diagCount * quadDiag;
     skeletonLeters = baseGrid + diagonals;
+  } else if (config.gridPattern === 'v_bracing') {
+    const baseGrid = (cols * h) + (rows * w);
+    const quadW = w / (cols + 1);
+    const quadH = h / (rows + 1);
+    const diagL = Math.sqrt((quadW/2)*(quadW/2) + quadH*quadH);
+    const diagonals = 2 * (cols + 1) * (rows + 1) * diagL;
+    skeletonLeters = baseGrid + diagonals;
   } else if (config.gridPattern === 'horizontal_trusses') {
     skeletonLeters = (cols * h) + (rows * w) * 1.5;
   }
@@ -397,35 +404,56 @@ export function calculateMaterials(config: StructureConfig, customSuppliers?: Su
     description: `Chapa de revestimiento frontal para cubrir los ${signArea.toFixed(1)} m² de cartelera publicitaria.`
   };
   
-  // 4. POSTES (Tubing)
+  // 4. POSTES (Tubing / Round / Lattice / IPN)
   const insertM = (config.columnInsertHeight !== undefined ? config.columnInsertHeight : 150) / 100;
   const postLength = c + insertM + buried; // Sube insertM sobre base de marco, clearance c, con enterrado de buried.
   let tubingPieceLength = 9.0;
   let tubingPrice = 0;
   let tubingSupplier = '';
+  let labelColumnProd = '';
   
   const cuencaPresetFallback = presetsToUse.find(s => s.id === 'cuenca_sur') || SUPPLIER_PRESETS[3];
   const chacaritaPresetFallback = presetsToUse.find(s => s.id === 'chacarita') || SUPPLIER_PRESETS[6];
+  const activeColType = config.columnType || 'tubing';
 
   if (isCleared) {
     tubingPrice = 0;
     tubingSupplier = solimetPreset.name;
     tubingPieceLength = 9.0;
-  } else if (config.columnProfile === 'tubing_2_7_8') {
-    const res = getMaterialProvider('tubing2_7_8', cuencaPresetFallback);
-    tubingPrice = res.price;
-    tubingSupplier = res.supplierName;
-    tubingPieceLength = Number(res.preset.tubing2_7_8_largo) || 9.0;
-  } else if (config.columnProfile === 'tubing_3_1_2') {
-    const res = getMaterialProvider('tubing3_1_2' as any, chacaritaPresetFallback);
-    tubingPrice = res.price || 90000.00;
-    tubingSupplier = res.supplierName;
-    tubingPieceLength = Number(res.preset.tubing3_1_2_largo) || 9.0;
+    labelColumnProd = 'Caño Tubing';
+  } else if (activeColType === 'lattice_antenna') {
+    // Lattice tower module from Taller Mendoza
+    tubingPrice = 168000;
+    tubingSupplier = 'TALLER MENDOZA: DESPIECE CAD';
+    tubingPieceLength = 6.0;
+    labelColumnProd = 'Torre Reticulada Antena Corrugada (Módulo 6m)';
+  } else if (activeColType === 'ipn') {
+    // IPN 120 structural steel I-beam
+    tubingPrice = 145000;
+    tubingSupplier = chacaritaPresetFallback.name;
+    tubingPieceLength = 6.0;
+    labelColumnProd = 'Perfil de Acero Doble T (IPN 120)';
+  } else if (activeColType === 'round_pipe') {
+    // Heavy duty steel pipe
+    tubingPrice = 108000;
+    tubingSupplier = solimetPreset.name;
+    tubingPieceLength = 6.0;
+    labelColumnProd = 'Caño Redondo Estructural con Costura Ø114mm';
   } else {
-    const res = getMaterialProvider('tubing2_7_8', cuencaPresetFallback);
-    tubingPrice = res.price * 0.85;
-    tubingSupplier = res.supplierName;
-    tubingPieceLength = Number(res.preset.tubing2_7_8_largo) || 9.0;
+    // Classic oil tubing scrap
+    if (config.columnProfile === 'tubing_3_1_2') {
+      const res = getMaterialProvider('tubing3_1_2' as any, chacaritaPresetFallback);
+      tubingPrice = res.price || 90000.00;
+      tubingSupplier = res.supplierName;
+      tubingPieceLength = Number(res.preset.tubing3_1_2_largo) || 9.0;
+      labelColumnProd = 'Caño Tubing Petrolero Rezago 3 1/2"';
+    } else {
+      const res = getMaterialProvider('tubing2_7_8', cuencaPresetFallback);
+      tubingPrice = res.price;
+      tubingSupplier = res.supplierName;
+      tubingPieceLength = Number(res.preset.tubing2_7_8_largo) || 9.0;
+      labelColumnProd = 'Caño Tubing Petrolero Rezago 2 7/8"';
+    }
   }
   
   let tubesToBuyCount = 0;
@@ -433,20 +461,21 @@ export function calculateMaterials(config: StructureConfig, customSuppliers?: Su
     tubesToBuyCount += Math.ceil(postLength / tubingPieceLength);
   }
   
-  const labelColumnProd = config.columnProfile === 'tubing_2_7_8' ? 'Tubing 2 7/8"'
-                        : config.columnProfile === 'tubing_3_1_2' ? 'Tubing 3 1/2"'
-                        : 'Caño Estructural Redondo Ø114mm';
+  const angleBarsQty = Math.ceil((4 * postLength * colCount) / 6.0);
+  const roundBarsQty = Math.ceil((6.5 * postLength * colCount) / 6.0);
                         
   const postesItem: MaterialItem = {
     id: 'mat_postes',
-    name: `Caño de Acero Sin Costura ${labelColumnProd} Rezago`,
+    name: activeColType === 'lattice_antenna' ? `Perfiles de Acero Ángulo L 1 1/2" x 1/8" x 6m (Cordones para Torres Celosía)` : `${labelColumnProd}`,
     category: 'postes',
-    quantity: tubesToBuyCount,
+    quantity: activeColType === 'lattice_antenna' ? angleBarsQty : tubesToBuyCount,
     unit: 'u',
-    unitPrice: tubingPrice,
-    supplier: tubingSupplier,
-    totalPrice: tubesToBuyCount * tubingPrice,
-    description: `Postes de soporte principal tipo Tubing. Sube ${Math.round(insertM * 100)} cm desde la base del marco del cartel, dejando libre ${(postLength - insertM - buried).toFixed(2)} m, más ${buried.toFixed(2)} m en el cimiento. Largo comercial de barra tubing: ${tubingPieceLength.toFixed(1)}m. Largo total por caño requerido de obra: ${postLength.toFixed(2)} metros.`
+    unitPrice: activeColType === 'lattice_antenna' ? (isCleared ? 0 : 34800) : tubingPrice,
+    supplier: activeColType === 'lattice_antenna' ? 'TALLER MENDOZA: ACEROS GENERALES' : tubingSupplier,
+    totalPrice: (activeColType === 'lattice_antenna' ? angleBarsQty : tubesToBuyCount) * (activeColType === 'lattice_antenna' ? (isCleared ? 0 : 34800) : tubingPrice),
+    description: activeColType === 'lattice_antenna'
+      ? `Perfiles de hierro ángulo laminados en caliente para las 4 patas (cordones principales) de las columnas reticuladas. Total de metros requeridos: ${(postLength * 4 * colCount).toFixed(1)}m para las ${colCount} columnas.`
+      : `Postes de soporte de obra tipo ${labelColumnProd}. Sube ${Math.round(insertM * 100)} cm desde la base del marco del cartel, dejando libre ${(postLength - insertM - buried).toFixed(2)} m, más ${buried.toFixed(2)} m en el cimiento. Largo de barra comercial: ${tubingPieceLength.toFixed(1)}m. Largo total de corte por poste: ${postLength.toFixed(2)} metros.`
   };
 
   // 4b. LOGICA DE SUJECIÓN Y MONTAJE (Placas de Vinculación y Enganches de Tubing a la Grilla)
@@ -493,44 +522,56 @@ export function calculateMaterials(config: StructureConfig, customSuppliers?: Su
   };
   
   // 6. ANCLAJES (Steel Plates & Pernos de anclaje)
-  const boltsCount = colCount * 4;
+  const isLattice = activeColType === 'lattice_antenna';
+  const boltsCount = isLattice ? (colCount * 16) : (colCount * 4);
+  const platinasCount = isLattice ? (colCount * 4) : colCount;
+  const escuadrasCount = isLattice ? (colCount * 16) : (colCount * 4);
+
   const platina560Res = getMaterialProvider('platina560', solimetPreset);
   const platinaEscuadraRes = getMaterialProvider('platinaEscuadra', solimetPreset);
   
   const anchorPlateUnitPrice = isCleared ? 0 : (platina560Res.price || 24820);
   const escuadraPlateUnitPrice = isCleared ? 0 : (platinaEscuadraRes.price || 1460);
   const boltUnitPrice = 5200;
-  const totalAnchorBaseCost = anchorPlateUnitPrice + (4 * escuadraPlateUnitPrice) + (4 * boltUnitPrice);
-  
-  // Prefer framework/chasis supplier for Anchor Kits (has 5% off list price)
-  const finalAnchorPrice = isCleared ? 0 : totalAnchorBaseCost * 0.95;
-  
-  const anchorItem: MaterialItem = {
-    id: 'mat_anclajes',
-    name: `Kits de Anclaje de Viento de Alta Resistencia (Placa de 12mm + 4 Escuadras 80x160 + Pernos ${config.anchorBoltDiameter === '3/4' ? '7/8"' : config.anchorBoltDiameter === '7/8' ? '7/8"' : config.anchorBoltDiameter + '"'})`,
+
+  const pernosItem: MaterialItem = {
+    id: 'mat_anclajes_pernos',
+    name: `Pernos de Anclaje de Alta Resistencia J-Bolt ø 7/8"`,
     category: 'anclajes',
-    quantity: colCount,
+    quantity: boltsCount,
     unit: 'u',
-    unitPrice: finalAnchorPrice,
+    unitPrice: boltUnitPrice,
     supplier: platina560Res.supplierName,
-    totalPrice: colCount * finalAnchorPrice,
-    description: `Detalle técnico del Kit de Arriostramiento:\n` +
-                 `• Placa Base de acero estructural de 560x560 mm cortada de chapa de 12 mm / (1/2") de espesor, perforada con ojales para pernos de 7/8".\n` +
-                 `• Refuerzos de unión: 4 escuadras triangulares de espesor 9.5 mm (3/8"), medidas de 80 mm de base por 160 mm de altura, para soldar perpendicularmente al tubo y base. Impide flexión y fatiga de soldadura.\n` +
-                 `📐 GUÍA DE ARMADO METALÚRGICO DE LA EMPRESA:\n` +
-                 `[+] Vista Superior Placa 560x560\n` +
-                 `  ┌───────── o ─────────┐\n` +
-                 `  │   ■             ■   │   Leyenda:\n` +
-                 `  │      ┌───────┐      │   ■ Ojales de 7/8" p/ Pernos\n` +
-                 `  │      │  (O)  │◄─────┼─── Poste Tubing en el centro\n` +
-                 `  │      └───────┘      │   ▲ 4 Escuadras de 80x160mm\n` +
-                 `  │   ■             ■   │\n` +
-                 `  └───────── o ─────────┘\n` +
-                 `[+] Vista Lateral Ensamble:\n` +
-                 `         ║       ║ ◄── Tubo de Poste\n` +
-                 `       ▲ ║       ║ ▲ ◄── Escuadras 80x160mm (Esp: 9.5mm)\n` +
-                 `     ╔═══╬═══════╬═══╗\n` +
-                 `     ╚═══╩═══════╩═══╝ ◄── Placa Base 560x560mm (Esp: 12mm)`
+    totalPrice: boltsCount * boltUnitPrice,
+    description: `Pernos de cimentación roscados curvados tipo J-Bolt de diámetro 7/8" x 500 mm de longitud lineal, fabricados en acero grado ASTM A307 / F-24, con rosca provista de tuerca hexagonal pesada y arandela de presión Grover cada uno.`
+  };
+
+  const platinasItem: MaterialItem = {
+    id: 'mat_anclajes_platinas',
+    name: isLattice 
+      ? `Placas Bases de Acero e:12mm (e:12mm, 200x200 mm) para Patas de Torre` 
+      : `Platinas de Acero Base de Columnas e:12mm (e:12mm, 560x560 mm)`,
+    category: 'anclajes',
+    quantity: platinasCount,
+    unit: 'u',
+    unitPrice: isLattice ? Math.round(anchorPlateUnitPrice * 0.4) : anchorPlateUnitPrice,
+    supplier: platina560Res.supplierName,
+    totalPrice: platinasCount * (isLattice ? Math.round(anchorPlateUnitPrice * 0.4) : anchorPlateUnitPrice),
+    description: isLattice
+      ? `Placas bases cuadradas de acero estructural de 200x200 mm cortadas de chapa de 12 mm (1/2") para soldadura individual de las 4 patas principales de cada Torre Celosía.`
+      : `Chapas bases cuadradas de acero estructural de 560x560 mm cortadas de chapa de 12 mm (1/2") de espesor, provistas de orificio concéntrico calibrado para insertar el poste de Tubing.`
+  };
+
+  const escuadrasItem: MaterialItem = {
+    id: 'mat_anclajes_escuadras',
+    name: `Rigidizadores Triangulares de rigidización de Brida (e:9.5mm, 80x160 mm)`,
+    category: 'anclajes',
+    quantity: escuadrasCount,
+    unit: 'u',
+    unitPrice: escuadraPlateUnitPrice,
+    supplier: platinaEscuadraRes.supplierName,
+    totalPrice: escuadrasCount * escuadraPlateUnitPrice,
+    description: `Rigidizadores triangulares de refuerzo cortados en chapa de 9.5 mm (3/8") de espesor, de 80 mm de base por 160 mm de altura, para soldar perpendicularmente al tubo y platina base.`
   };
   
   // 7. COMPLEMENTOS Y CONSUMIBLES (Tornillos, Electrodos y Pintura)
@@ -583,7 +624,29 @@ export function calculateMaterials(config: StructureConfig, customSuppliers?: Su
     description: `Para el acabado y protección contra la corrosión de todos los caños de la estructura (valuado proporcional por litro sobre lata de 4L).`
   };
   
-  return [marcoItem, skeletonItem, chapaItem, postesItem, sujecionItem, cimentacionItem, anchorItem, tornillosItem, electrodosItem, pinturaItem];
+  const baseList = [marcoItem, skeletonItem, chapaItem, postesItem, sujecionItem, cimentacionItem, pernosItem, platinasItem, escuadrasItem, tornillosItem, electrodosItem, pinturaItem];
+  
+  if (activeColType === 'lattice_antenna') {
+    const celosiaItem: MaterialItem = {
+      id: 'mat_postes_celosia',
+      name: `Hierro Redondo Liso Macizo Ø12 mm x 6m (Celosías para Torres Reticuladas)`,
+      category: 'postes',
+      quantity: roundBarsQty,
+      unit: 'u',
+      unitPrice: isCleared ? 0 : 18400,
+      supplier: 'TALLER MENDOZA: ACEROS GENERALES',
+      totalPrice: roundBarsQty * (isCleared ? 0 : 18400),
+      description: `Hierro macizo redondo de ø12 mm para la costura transversal en zigzag en las 4 caras de la torre celosía. Total de metros requeridos en obra: ${(postLength * 6.5 * colCount).toFixed(1)}m aproximados.`
+    };
+    
+    // Insert after mat_postes
+    const idx = baseList.findIndex(item => item.id === 'mat_postes');
+    if (idx !== -1) {
+      baseList.splice(idx + 1, 0, celosiaItem);
+    }
+  }
+  
+  return baseList;
 }
 
 export function formatPrice(value: number): string {
@@ -639,6 +702,13 @@ export function calculateStructureWeightAndVols(config: StructureConfig): Struct
     const quadDiag = Math.sqrt(quadW * quadW + quadH * quadH);
     const diagCount = (cols + 1) * (rows + 1);
     skeletonMeters = baseGrid + (diagCount * quadDiag);
+  } else if (config.gridPattern === 'v_bracing') {
+    const baseGrid = (cols * h) + (rows * w);
+    const quadW = w / (cols + 1);
+    const quadH = h / (rows + 1);
+    const diagL = Math.sqrt((quadW/2)*(quadW/2) + quadH*quadH);
+    const diagonals = 2 * (cols + 1) * (rows + 1) * diagL;
+    skeletonMeters = baseGrid + diagonals;
   } else if (config.gridPattern === 'horizontal_trusses') {
     skeletonMeters = (cols * h) + (rows * w) * 1.5;
   }
@@ -651,10 +721,22 @@ export function calculateStructureWeightAndVols(config: StructureConfig): Struct
   const chapaWeightKg = signArea * chapaDetails.weight;
   
   // Columns Weight
-  const columnDetails = PROFILE_DETAILS.columns.find(col => col.value === config.columnProfile) || PROFILE_DETAILS.columns[0];
+  let colWeightPerM = 9.67;
+  const activeColType = config.columnType || 'tubing';
+  if (activeColType === 'lattice_antenna') {
+    colWeightPerM = 12.5; // celosía module average kg per linear meter
+  } else if (activeColType === 'ipn') {
+    colWeightPerM = 11.1; // IPN 120 (11.1 kg/m)
+  } else if (activeColType === 'round_pipe') {
+    colWeightPerM = 8.75; // round pipe Ø114 (8.75 kg/m)
+  } else {
+    const columnDetails = PROFILE_DETAILS.columns.find(col => col.value === config.columnProfile) || PROFILE_DETAILS.columns[0];
+    colWeightPerM = columnDetails.weight;
+  }
+  
   const postLength = c + 1.5 + buried; // Sube exactly 1.5m (150 cm) from bottom frame border
   const sujecionWeightKg = colCount * 2 * 4.5; // 4.5 kg per plate/U-bolt mounting node (12 nodes total)
-  const columnsWeightKg = (colCount * postLength * columnDetails.weight) + sujecionWeightKg;
+  const columnsWeightKg = (colCount * postLength * colWeightPerM) + sujecionWeightKg;
   
   // Footing Volumes & Weight
   const footingW = config.foundationWidth / 100;

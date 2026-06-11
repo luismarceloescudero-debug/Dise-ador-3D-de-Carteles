@@ -438,6 +438,27 @@ export default function ThreeCanvas({
                     : 0.08;
     const signYCenter = clearance + h/2;
 
+    // Define the heights of backing reinforcement rails (vigas maestras de vinculación trasera)
+    const railY1 = clearance + Math.max(0.15, h * 0.15);
+    const railY2 = clearance + h - Math.max(0.15, h * 0.15);
+
+    // Create continuous heavy horizontal backing rails (vigas maestras de vinculación)
+    // spanning the entire width w of the billboard, to structurally reinforce the connection in high wind loads.
+    const backingMat = getMaterialForPart('marco', steelMaterial);
+    const backingBeamGeo = new THREE.BoxGeometry(w, 0.08, 0.08); // 80x80 mm heavy structural tubes
+    
+    // Bottom mounting rail
+    const railMesh1 = new THREE.Mesh(backingBeamGeo, backingMat);
+    railMesh1.position.set(0, railY1, -pipeThick - 0.04);
+    registerPartMesh(railMesh1, 'marco');
+    assemblyGroup.add(railMesh1);
+
+    // Top mounting rail
+    const railMesh2 = new THREE.Mesh(backingBeamGeo, backingMat);
+    railMesh2.position.set(0, railY2, -pipeThick - 0.04);
+    registerPartMesh(railMesh2, 'marco');
+    assemblyGroup.add(railMesh2);
+
 
     // 11. BUILD INTEGRATED CHASSIS SUPPORT COLUMNS (TUBING PETROQUÍMICO REFORZADO)
     // Sized to rise up from subterranean foundations (-buried) and end EXACTLY at half sign height (clearance + h / 2)
@@ -479,22 +500,76 @@ export default function ThreeCanvas({
     const colMat = getMaterialForPart('columns', tubingMaterial);
     
     colHorizontalPositions.forEach((colX) => {
+      // Create a local column group to handle coordinate transformations for curved and angled structures
+      const colGroup = new THREE.Group();
+      
+      const structShape = config.structureShape || 'flat';
+      let targetZ = 0;
+      let targetRotY = 0;
+
+      if (structShape === 'curved') {
+        const centerW = w * 0.50;
+        const wingW = w * 0.25;
+        const angle = 0.26; // approx 15 degrees
+        
+        if (colX < -centerW / 2 + 0.01) {
+          // Left wing segment
+          const leftShiftX = -(centerW/2 + (wingW/2) * Math.cos(angle));
+          const leftShiftZ = -(wingW/2) * Math.sin(angle);
+          const dx = (colX - leftShiftX) / Math.cos(angle);
+          targetZ = leftShiftZ + dx * Math.sin(angle);
+          targetRotY = angle;
+        } else if (colX > centerW / 2 - 0.01) {
+          // Right wing segment
+          const rightShiftX = centerW/2 + (wingW/2) * Math.cos(angle);
+          const rightShiftZ = -(wingW/2) * Math.sin(angle);
+          const dx = (colX - rightShiftX) / Math.cos(angle);
+          targetZ = rightShiftZ - dx * Math.sin(angle);
+          targetRotY = -angle;
+        } else {
+          // Center segment
+          targetZ = 0;
+          targetRotY = 0;
+        }
+      } else if (structShape === 'v_shaped') {
+        const vFaceW = w * 0.65;
+        const vAngle = 0.38; // approx 22 degrees
+        const shiftX = (vFaceW/2) * Math.cos(vAngle);
+        const shiftZ = -(vFaceW/2) * Math.sin(vAngle) + 0.1;
+        
+        if (colX <= 0) {
+          const dx = (colX + shiftX) / Math.cos(vAngle);
+          targetZ = shiftZ + dx * Math.sin(vAngle);
+          targetRotY = vAngle;
+        } else {
+          const dx = (colX - shiftX) / Math.cos(vAngle);
+          targetZ = shiftZ - dx * Math.sin(vAngle);
+          targetRotY = -vAngle;
+        }
+      }
+
+      colGroup.position.set(colX, 0, targetZ);
+      colGroup.rotation.y = targetRotY;
+
+      const localColX = 0;
+      const colType = config.columnType || 'tubing';
+      const halfWidth = 0.15; // 30cm wide tower (highly stable)
+      const legRadius = pipeDiameter * 0.18; // scaled leg pipe size
+      
+      const localColZ = colType === 'lattice_antenna'
+        ? -pipeThick - legRadius - halfWidth
+        : -pipeThick - (pipeDiameter/2);
+
       // Bottom rests buried (y = -buried), top climbs up to (clearance + insertMeters).
       // Center of this length is exactly (clearance + insertMeters - buried) / 2
       const colYCenter = (clearance + insertMeters - buried) / 2;
-      // Position column directly touching the back face of client mounting rails
-      const colZ = -pipeThick - (pipeDiameter/2);
-
+      
       // Vertical Column cylinder
       if (showColumns) {
-        const colType = config.columnType || 'tubing';
-        
         if (colType === 'lattice_antenna') {
           // Torre Reticulada de Antena (Lattice Tower) - 4 vertical legs + internal trusses
-          const legRadius = pipeDiameter * 0.18;
-          const halfWidth = 0.22; // width of tower is 44cm
           
-          // Outer Legs
+          // Outer Legs (4 standard vertical legs, perfectly placed behind the frame)
           const offsets = [
             { x: -halfWidth, z: -halfWidth },
             { x: halfWidth, z: -halfWidth },
@@ -505,95 +580,204 @@ export default function ThreeCanvas({
           const legGeo = new THREE.CylinderGeometry(legRadius, legRadius, colTotalLength, 12);
           offsets.forEach(offset => {
             const legMesh = new THREE.Mesh(legGeo, colMat);
-            legMesh.position.set(colX + offset.x, colYCenter, colZ + offset.z);
+            legMesh.position.set(localColX + offset.x, colYCenter, localColZ + offset.z);
             registerPartMesh(legMesh, 'columns');
-            assemblyGroup.add(legMesh);
+            colGroup.add(legMesh);
           });
           
-          // Internal Bracing segments along height
-          const segmentsCount = Math.floor(colTotalLength / 0.42);
+          // Highly-detailed continuous truss segment spacing (50cm per bay)
+          const segmentHeight = 0.50;
+          const segmentsCount = Math.floor(colTotalLength / segmentHeight);
           const braceMat = getMaterialForPart('columns', steelMaterial);
+          const diagRadius = 0.007; // 14mm thick rods
           
           for (let s = 0; s < segmentsCount; s++) {
-            const hFraction = s / segmentsCount;
-            const yPos = -buried + hFraction * colTotalLength;
+            const yPos = -buried + s * segmentHeight;
             
-            // Draw horizontal ring struts
+            // Draw horizontal ring struts at each segment bay level
             const horizGeo = new THREE.BoxGeometry(halfWidth * 2, legRadius * 0.8, legRadius * 0.8);
             
-            // X-dir horizontal pieces
+            // X-dir horizontal pieces (Front & Back)
             const rX1 = new THREE.Mesh(horizGeo, braceMat);
-            rX1.position.set(colX, yPos, colZ - halfWidth);
-            assemblyGroup.add(rX1);
+            rX1.position.set(localColX, yPos, localColZ - halfWidth);
+            colGroup.add(rX1);
             
             const rX2 = new THREE.Mesh(horizGeo, braceMat);
-            rX2.position.set(colX, yPos, colZ + halfWidth);
-            assemblyGroup.add(rX2);
+            rX2.position.set(localColX, yPos, localColZ + halfWidth);
+            colGroup.add(rX2);
             
-            // Z-dir horizontal pieces
+            // Z-dir horizontal pieces (Left & Right)
             const horizZGeo = new THREE.BoxGeometry(legRadius * 0.8, legRadius * 0.8, halfWidth * 2);
             const rZ1 = new THREE.Mesh(horizZGeo, braceMat);
-            rZ1.position.set(colX - halfWidth, yPos, colZ);
-            assemblyGroup.add(rZ1);
+            rZ1.position.set(localColX - halfWidth, yPos, localColZ);
+            colGroup.add(rZ1);
             
             const rZ2 = new THREE.Mesh(horizZGeo, braceMat);
-            rZ2.position.set(colX + halfWidth, yPos, colZ);
-            assemblyGroup.add(rZ2);
+            rZ2.position.set(localColX + halfWidth, yPos, localColZ);
+            colGroup.add(rZ2);
             
-            // Zigzag diagonal braces
-            if (s < segmentsCount - 1) {
-              const diagGeo = new THREE.CylinderGeometry(0.008, 0.008, halfWidth * 2.8, 8);
-              const dMesh = new THREE.Mesh(diagGeo, braceMat);
-              dMesh.position.set(colX, yPos + 0.21, colZ);
-              dMesh.rotation.z = Math.PI / 4 * (s % 2 === 0 ? 1 : -1);
-              assemblyGroup.add(dMesh);
+            // HIGH-DETAIL DOUBLE DIAGONAL FACE CROSS BRACINGS (Cruz de San Andrés on ALL 4 faces of each bay)
+            if (s < segmentsCount) {
+              const yStart = -buried + s * segmentHeight;
+              const yEnd = -buried + (s + 1) * segmentHeight;
+              const yMid = (yStart + yEnd) / 2;
+              const diagLen = Math.sqrt((halfWidth * 2) * (halfWidth * 2) + segmentHeight * segmentHeight);
+              const angle = Math.atan2(halfWidth * 2, segmentHeight);
+              const dGeo = new THREE.CylinderGeometry(diagRadius, diagRadius, diagLen, 8);
+              
+              // 1. FRONT FACE (Z = localColZ + halfWidth)
+              const dF1 = new THREE.Mesh(dGeo, braceMat);
+              dF1.position.set(localColX, yMid, localColZ + halfWidth);
+              dF1.rotation.z = angle;
+              colGroup.add(dF1);
+              
+              const dF2 = new THREE.Mesh(dGeo, braceMat);
+              dF2.position.set(localColX, yMid, localColZ + halfWidth);
+              dF2.rotation.z = -angle;
+              colGroup.add(dF2);
+              
+              // 2. BACK FACE (Z = localColZ - halfWidth)
+              const dB1 = new THREE.Mesh(dGeo, braceMat);
+              dB1.position.set(localColX, yMid, localColZ - halfWidth);
+              dB1.rotation.z = angle;
+              colGroup.add(dB1);
+              
+              const dB2 = new THREE.Mesh(dGeo, braceMat);
+              dB2.position.set(localColX, yMid, localColZ - halfWidth);
+              dB2.rotation.z = -angle;
+              colGroup.add(dB2);
+              
+              // 3. LEFT FACE (X = localColX - halfWidth) (Y-Z plane)
+              const dL1 = new THREE.Mesh(dGeo, braceMat);
+              dL1.position.set(localColX - halfWidth, yMid, localColZ);
+              dL1.rotation.x = angle;
+              colGroup.add(dL1);
+              
+              const dL2 = new THREE.Mesh(dGeo, braceMat);
+              dL2.position.set(localColX - halfWidth, yMid, localColZ);
+              dL2.rotation.x = -angle;
+              colGroup.add(dL2);
+              
+              // 4. RIGHT FACE (X = localColX + halfWidth) (Y-Z plane)
+              const dR1 = new THREE.Mesh(dGeo, braceMat);
+              dR1.position.set(localColX + halfWidth, yMid, localColZ);
+              dR1.rotation.x = angle;
+              colGroup.add(dR1);
+              
+              const dR2 = new THREE.Mesh(dGeo, braceMat);
+              dR2.position.set(localColX + halfWidth, yMid, localColZ);
+              dR2.rotation.x = -angle;
+              colGroup.add(dR2);
             }
           }
-        } else if (colType === 'high_tension') {
-          // Poste con diseño de Tendido Eléctrico de Alta Tensión
-          const colGeo = new THREE.CylinderGeometry(pipeDiameter * 0.4, pipeDiameter, colTotalLength, 24);
-          const colMesh = new THREE.Mesh(colGeo, colMat);
-          colMesh.position.set(colX, colYCenter, colZ);
-          registerPartMesh(colMesh, 'columns');
-          assemblyGroup.add(colMesh);
           
-          // Add 2 Heavy Duty crossarms / brazos cruceta at active heights
-          const armGeo = new THREE.BoxGeometry(1.6, pipeDiameter * 0.6, pipeDiameter * 0.6);
-          const armMat = getMaterialForPart('columns', steelMaterial);
+          // Leg sections circular bolted flanges every 1.5 meters for realistic high-detail segments
+          const flangeInterval = 1.5;
+          const flangeGeo = new THREE.CylinderGeometry(legRadius * 1.5, legRadius * 1.5, 0.015, 12);
+          const flangeMat = getMaterialForPart('anchors', anchorPlatesMaterial);
           
-          const armY1 = clearance - 0.2;
-          const arm1 = new THREE.Mesh(armGeo, armMat);
-          arm1.position.set(colX, armY1, colZ);
-          registerPartMesh(arm1, 'columns');
-          assemblyGroup.add(arm1);
+          for (let fy = 0; fy < colTotalLength; fy += flangeInterval) {
+            const yFlange = fy; 
+            if (yFlange > 0 && yFlange < (clearance + insertMeters)) {
+              offsets.forEach(offset => {
+                const flMesh = new THREE.Mesh(flangeGeo, flangeMat);
+                flMesh.position.set(localColX + offset.x, yFlange, localColZ + offset.z);
+                colGroup.add(flMesh);
+              });
+            }
+          }
+        } else if (colType === 'ipn') {
+          // Perfil Doble T (IPN 120/140) - 1 web plate + 2 flange plates
+          const flangeW = pipeDiameter * 1.2;
+          const flangeThick = 0.012; // 12mm flanges
+          const webThick = 0.008; // 8mm web
+          const beamW = pipeDiameter * 1.1;
           
-          const armY2 = clearance + insertMeters * 0.7;
-          const arm2 = new THREE.Mesh(armGeo, armMat);
-          arm2.position.set(colX, armY2, colZ);
-          registerPartMesh(arm2, 'columns');
-          assemblyGroup.add(arm2);
+          // Web (Alma central)
+          const webGeo = new THREE.BoxGeometry(webThick, colTotalLength, beamW - 2 * flangeThick);
+          const webMesh = new THREE.Mesh(webGeo, colMat);
+          webMesh.position.set(localColX, colYCenter, localColZ);
+          registerPartMesh(webMesh, 'columns');
+          colGroup.add(webMesh);
           
-          // Insulators details
-          const insulatorGeo = new THREE.CylinderGeometry(0.035, 0.035, 0.16, 12);
-          const insMat = getMaterialForPart('columns', concreteMaterial);
+          // Front Flange (Ala frontal)
+          const fGeo = new THREE.BoxGeometry(flangeW, colTotalLength, flangeThick);
+          const frontFlange = new THREE.Mesh(fGeo, colMat);
+          frontFlange.position.set(localColX, colYCenter, localColZ + beamW/2 - flangeThick/2);
+          registerPartMesh(frontFlange, 'columns');
+          colGroup.add(frontFlange);
           
-          [-0.7, 0.7].forEach(offset => {
-            const ins1 = new THREE.Mesh(insulatorGeo, insMat);
-            ins1.position.set(colX + offset, armY1 - 0.08, colZ);
-            assemblyGroup.add(ins1);
-            
-            const ins2 = new THREE.Mesh(insulatorGeo, insMat);
-            ins2.position.set(colX + offset, armY2 - 0.08, colZ);
-            assemblyGroup.add(ins2);
-          });
-        } else {
-          // Standard Heavy seamless tubing posts
+          // Back Flange (Ala trasera)
+          const backFlange = new THREE.Mesh(fGeo, colMat);
+          backFlange.position.set(localColX, colYCenter, localColZ - beamW/2 + flangeThick/2);
+          registerPartMesh(backFlange, 'columns');
+          colGroup.add(backFlange);
+          
+        } else if (colType === 'round_pipe') {
+          // Smooth circular structural pipe
           const colGeo = new THREE.CylinderGeometry(pipeDiameter/2, pipeDiameter/2, colTotalLength, 24);
           const colMesh = new THREE.Mesh(colGeo, colMat);
-          colMesh.position.set(colX, colYCenter, colZ);
+          colMesh.position.set(localColX, colYCenter, localColZ);
           registerPartMesh(colMesh, 'columns');
-          assemblyGroup.add(colMesh);
+          colGroup.add(colMesh);
+          
+          // Add discrete connection weld collars
+          const collarGeo = new THREE.CylinderGeometry(pipeDiameter/2 + 0.008, pipeDiameter/2 + 0.008, 0.04, 24);
+          const collarY = clearance + insertMeters * 0.2;
+          const collar = new THREE.Mesh(collarGeo, colMat);
+          collar.position.set(localColX, collarY, localColZ);
+          colGroup.add(collar);
+          
+        } else {
+          // Standard seamless tubing posts - with rusty heavy casing sleeves!
+          const colGeo = new THREE.CylinderGeometry(pipeDiameter/2, pipeDiameter/2, colTotalLength, 24);
+          const colMesh = new THREE.Mesh(colGeo, colMat);
+          colMesh.position.set(localColX, colYCenter, localColZ);
+          registerPartMesh(colMesh, 'columns');
+          colGroup.add(colMesh);
+          
+          // Red connection sleeve collars characteristic of oilfield tubing rezago
+          const sleeveGeo = new THREE.CylinderGeometry(pipeDiameter/2 + 0.012, pipeDiameter/2 + 0.012, 0.18, 16);
+          const sleeveMat = getMaterialForPart('columns', steelMaterial);
+          
+          // Add 2 sleeves along length
+          const sleeveY1 = -buried + colTotalLength * 0.35;
+          const sleeveY2 = -buried + colTotalLength * 0.75;
+          
+          const sleeve1 = new THREE.Mesh(sleeveGeo, sleeveMat);
+          sleeve1.position.set(localColX, sleeveY1, localColZ);
+          colGroup.add(sleeve1);
+          
+          const sleeve2 = new THREE.Mesh(sleeveGeo, sleeveMat);
+          sleeve2.position.set(localColX, sleeveY2, localColZ);
+          colGroup.add(sleeve2);
         }
+      }
+
+      // Heavy-duty structural steel brackets/clamps (ménsulas de vinculación de chasis posterior)
+      // Visualizing beautiful physical connection joints where columns interface with full-width backing rails
+      const bracketMat = getMaterialForPart('anchors', boltsMaterial);
+      if (colType === 'lattice_antenna') {
+        const plateGeo = new THREE.BoxGeometry(0.10, 0.10, 0.02);
+        [railY1, railY2].forEach(yPos => {
+          // Connect left-front leg
+          const brL = new THREE.Mesh(plateGeo, bracketMat);
+          brL.position.set(localColX - halfWidth, yPos, -pipeThick - 0.01);
+          colGroup.add(brL);
+
+          // Connect right-front leg
+          const brR = new THREE.Mesh(plateGeo, bracketMat);
+          brR.position.set(localColX + halfWidth, yPos, -pipeThick - 0.01);
+          colGroup.add(brR);
+        });
+      } else {
+        const clampGeo = new THREE.BoxGeometry(pipeDiameter + 0.03, 0.08, 0.04);
+        [railY1, railY2].forEach(yPos => {
+          const clampItem = new THREE.Mesh(clampGeo, bracketMat);
+          // Position it wrapping the tangent cylindrical column touching the backing rail
+          clampItem.position.set(localColX, yPos, localColZ + pipeDiameter/2 + 0.01);
+          colGroup.add(clampItem);
+        });
       }
 
       // BASE INTERFACES: Heavy Structural Weld Steel Baseplates + STIFFENERS (CARTELAS) + J-BOLTS
@@ -603,56 +787,107 @@ export default function ThreeCanvas({
       const anchorY = -buried;
 
       if (showAnchors) {
-        const plateGeo = new THREE.BoxGeometry(plateW, plateThick, plateH);
         const plateMat = getMaterialForPart('anchors', anchorPlatesMaterial);
-        const plateMesh = new THREE.Mesh(plateGeo, plateMat);
-        
-        plateMesh.position.set(colX, anchorY, colZ);
-        registerPartMesh(plateMesh, 'anchors');
-        assemblyGroup.add(plateMesh);
-
-        // WELDED STIFFENERS (CARTELAS DE ARRIOSTRAMIENTO DE ALTA RESISTENCIA)
-        const gussetWidth = 0.01; // 10mm thick plates
-        const gussetHeight = 0.16; // 160mm tall
-        const gussetDepth = 0.08;  // 80mm structural protrusion
         const gussetMat = getMaterialForPart('anchors', anchorPlatesMaterial);
-        
-        const gNorthGeo = new THREE.BoxGeometry(gussetWidth, gussetHeight, gussetDepth);
-        const gNorth = new THREE.Mesh(gNorthGeo, gussetMat);
-        gNorth.position.set(colX, anchorY + gussetHeight/2, colZ + pipeDiameter/2 + gussetDepth/2);
-        registerPartMesh(gNorth, 'anchors');
-        assemblyGroup.add(gNorth);
+        const boltMat = getMaterialForPart('anchors', boltsMaterial);
 
-        const gSouth = new THREE.Mesh(gNorthGeo, gussetMat);
-        gSouth.position.set(colX, anchorY + gussetHeight/2, colZ - pipeDiameter/2 - gussetDepth/2);
-        registerPartMesh(gSouth, 'anchors');
-        assemblyGroup.add(gSouth);
+        if (colType === 'lattice_antenna') {
+          // Torre Reticulada: 4 smaller independent baseplates, one for each leg of the 30x30cm reticular tower!
+          const miniPlateSize = 0.12;
+          
+          const offsets = [
+            { x: -halfWidth, z: -halfWidth },
+            { x: halfWidth, z: -halfWidth },
+            { x: -halfWidth, z: halfWidth },
+            { x: halfWidth, z: halfWidth }
+          ];
 
-        const gEastGeo = new THREE.BoxGeometry(gussetDepth, gussetHeight, gussetWidth);
-        const gEast = new THREE.Mesh(gEastGeo, gussetMat);
-        gEast.position.set(colX + pipeDiameter/2 + gussetDepth/2, anchorY + gussetHeight/2, colZ);
-        registerPartMesh(gEast, 'anchors');
-        assemblyGroup.add(gEast);
+          offsets.forEach(offset => {
+            // Baseplate for single leg
+            const legPlateGeo = new THREE.BoxGeometry(miniPlateSize, plateThick, miniPlateSize);
+            const legPlateMesh = new THREE.Mesh(legPlateGeo, plateMat);
+            legPlateMesh.position.set(localColX + offset.x, anchorY, localColZ + offset.z);
+            registerPartMesh(legPlateMesh, 'anchors');
+            colGroup.add(legPlateMesh);
 
-        const gWest = new THREE.Mesh(gEastGeo, gussetMat);
-        gWest.position.set(colX - pipeDiameter/2 - gussetDepth/2, anchorY + gussetHeight/2, colZ);
-        registerPartMesh(gWest, 'anchors');
-        assemblyGroup.add(gWest);
+            // 2 small welded stiffeners (cartelas) per leg baseplate
+            const miniGussetWidth = 0.006;
+            const miniGussetHeight = 0.06;
+            const miniGussetDepth = 0.03;
 
-        // HIGH RESISTANCE ASTM ADHESIVE J-BOLTS (PERNOS DE ANCLAJE ACERO ZINCADO)
-        const boltLength = 0.50; // 50cm pernos anchor
-        for (let bx = -1; bx <= 1; bx += 2) {
-          for (let bz = -1; bz <= 1; bz += 2) {
-            const boltGeo = new THREE.CylinderGeometry(0.014, 0.014, boltLength, 8);
-            const boltMat = getMaterialForPart('anchors', boltsMaterial);
-            const boltMesh = new THREE.Mesh(boltGeo, boltMat);
-            boltMesh.position.set(
-              colX + bx * (plateW/2 - 0.035),
-              anchorY + 0.12, // bolts head protrude above plate
-              colZ + bz * (plateH/2 - 0.035)
-            );
-            registerPartMesh(boltMesh, 'anchors');
-            assemblyGroup.add(boltMesh);
+            const g1 = new THREE.Mesh(new THREE.BoxGeometry(miniGussetWidth, miniGussetHeight, miniGussetDepth), gussetMat);
+            g1.position.set(localColX + offset.x, anchorY + miniGussetHeight/2, localColZ + offset.z + legRadius + miniGussetDepth/2);
+            registerPartMesh(g1, 'anchors');
+            colGroup.add(g1);
+
+            const g2 = new THREE.Mesh(new THREE.BoxGeometry(miniGussetWidth, miniGussetHeight, miniGussetDepth), gussetMat);
+            g2.position.set(localColX + offset.x, anchorY + miniGussetHeight/2, localColZ + offset.z - legRadius - miniGussetDepth/2);
+            registerPartMesh(g2, 'anchors');
+            colGroup.add(g2);
+
+            // J-bolt anchor studs
+            for (let bx = -1; bx <= 1; bx += 2) {
+              const boltGeo = new THREE.CylinderGeometry(0.009, 0.009, 0.32, 8);
+              const boltMesh = new THREE.Mesh(boltGeo, boltMat);
+              boltMesh.position.set(
+                localColX + offset.x + bx * (miniPlateSize/2 - 0.015),
+                anchorY + 0.08,
+                localColZ + offset.z
+              );
+              registerPartMesh(boltMesh, 'anchors');
+              colGroup.add(boltMesh);
+            }
+          });
+        } else {
+          // Standard Single Large Baseplate
+          const plateGeo = new THREE.BoxGeometry(plateW, plateThick, plateH);
+          const plateMesh = new THREE.Mesh(plateGeo, plateMat);
+          
+          plateMesh.position.set(localColX, anchorY, localColZ);
+          registerPartMesh(plateMesh, 'anchors');
+          colGroup.add(plateMesh);
+
+          // WELDED STIFFENERS (CARTELAS DE ARRIOSTRAMIENTO DE ALTA RESISTENCIA)
+          const gussetWidth = 0.01; // 10mm thick plates
+          const gussetHeight = 0.16; // 160mm tall
+          const gussetDepth = 0.08;  // 80mm structural protrusion
+          
+          const gNorthGeo = new THREE.BoxGeometry(gussetWidth, gussetHeight, gussetDepth);
+          const gNorth = new THREE.Mesh(gNorthGeo, gussetMat);
+          gNorth.position.set(localColX, anchorY + gussetHeight/2, localColZ + pipeDiameter/2 + gussetDepth/2);
+          registerPartMesh(gNorth, 'anchors');
+          colGroup.add(gNorth);
+
+          const gSouth = new THREE.Mesh(gNorthGeo, gussetMat);
+          gSouth.position.set(localColX, anchorY + gussetHeight/2, localColZ - pipeDiameter/2 - gussetDepth/2);
+          registerPartMesh(gSouth, 'anchors');
+          colGroup.add(gSouth);
+
+          const gEastGeo = new THREE.BoxGeometry(gussetDepth, gussetHeight, gussetWidth);
+          const gEast = new THREE.Mesh(gEastGeo, gussetMat);
+          gEast.position.set(localColX + pipeDiameter/2 + gussetDepth/2, anchorY + gussetHeight/2, localColZ);
+          registerPartMesh(gEast, 'anchors');
+          colGroup.add(gEast);
+
+          const gWest = new THREE.Mesh(gEastGeo, gussetMat);
+          gWest.position.set(localColX - pipeDiameter/2 - gussetDepth/2, anchorY + gussetHeight/2, localColZ);
+          registerPartMesh(gWest, 'anchors');
+          colGroup.add(gWest);
+
+          // HIGH RESISTANCE ASTM ADHESIVE J-BOLTS (PERNOS DE ANCLAJE ACERO ZINCADO)
+          const boltLength = 0.50; // 50cm pernos anchor
+          for (let bx = -1; bx <= 1; bx += 2) {
+            for (let bz = -1; bz <= 1; bz += 2) {
+              const boltGeo = new THREE.CylinderGeometry(0.014, 0.014, boltLength, 8);
+              const boltMesh = new THREE.Mesh(boltGeo, boltMat);
+              boltMesh.position.set(
+                localColX + bx * (plateW/2 - 0.035),
+                anchorY + 0.12, // bolts head protrude above plate
+                localColZ + bz * (plateH/2 - 0.035)
+              );
+              registerPartMesh(boltMesh, 'anchors');
+              colGroup.add(boltMesh);
+            }
           }
         }
       }
@@ -663,11 +898,14 @@ export default function ThreeCanvas({
           const footingGeo = new THREE.BoxGeometry(fW, fD, fW);
           const footingMat = getMaterialForPart('foundation', concreteMaterial);
           const footingMesh = new THREE.Mesh(footingGeo, footingMat);
-          footingMesh.position.set(colX, -fD/2, colZ);
+          footingMesh.position.set(localColX, -fD/2, localColZ);
           registerPartMesh(footingMesh, 'foundation');
-          assemblyGroup.add(footingMesh);
+          colGroup.add(footingMesh);
         }
       }
+
+      // Add the rotated column group to scene
+      assemblyGroup.add(colGroup);
     });
 
 
@@ -755,37 +993,73 @@ export default function ThreeCanvas({
           }
         }
 
-        // C. Wind Braces (Cruz de San Andrés)
-        if (config.gridPattern === 'diagonal_cross' && innerPipeWCount > 0) {
+        // C. Wind Braces (Cruz de San Andrés o Arriostramiento en V)
+        if (innerPipeWCount > 0) {
           const stepVert = faceW / (innerPipeWCount + 1);
           const stepHoriz = faceH / (innerPipeHCount + 1);
-          
-          const beamGeo = (len: number, angle: number, posX: number, posY: number, isRight: boolean) => {
-            const geo = new THREE.BoxGeometry(innerPipeThick * 0.70, len, innerPipeThick * 0.60);
-            const mesh = new THREE.Mesh(geo, skeletonMat);
-            mesh.rotation.z = isRight ? -angle : angle;
-            mesh.position.set(posX, posY, -pipeThick/2 - 0.005);
-            registerPartMesh(mesh, 'skeleton');
-            faceGroup.add(mesh);
-          };
 
-          for (let vi = 0; vi <= innerPipeWCount; vi++) {
-            const cellLeft = -faceW/2 + vi * stepVert;
-            const cellRight = cellLeft + stepVert;
-            const cellCenterX = (cellLeft + cellRight) / 2;
-            
-            for (let hi = 0; hi <= innerPipeHCount; hi++) {
-              const cellBottom = -faceH/2 + hi * stepHoriz;
-              const cellTop = cellBottom + stepHoriz;
-              const cellCenterY = (cellBottom + cellTop) / 2;
+          if (config.gridPattern === 'diagonal_cross') {
+            const beamGeo = (len: number, angle: number, posX: number, posY: number, isRight: boolean) => {
+              const geo = new THREE.BoxGeometry(innerPipeThick * 0.70, len, innerPipeThick * 0.60);
+              const mesh = new THREE.Mesh(geo, skeletonMat);
+              mesh.rotation.z = isRight ? -angle : angle;
+              mesh.position.set(posX, posY, -pipeThick/2 - 0.005);
+              registerPartMesh(mesh, 'skeleton');
+              faceGroup.add(mesh);
+            };
+
+            for (let vi = 0; vi <= innerPipeWCount; vi++) {
+              const cellLeft = -faceW/2 + vi * stepVert;
+              const cellRight = cellLeft + stepVert;
+              const cellCenterX = (cellLeft + cellRight) / 2;
               
-              const widthSec = stepVert;
-              const heightSec = stepHoriz;
-              const diagLen = Math.sqrt(widthSec * widthSec + heightSec * heightSec);
-              const angle = Math.atan2(widthSec, heightSec);
+              for (let hi = 0; hi <= innerPipeHCount; hi++) {
+                const cellBottom = -faceH/2 + hi * stepHoriz;
+                const cellTop = cellBottom + stepHoriz;
+                const cellCenterY = (cellBottom + cellTop) / 2;
+                
+                const widthSec = stepVert;
+                const heightSec = stepHoriz;
+                const diagLen = Math.sqrt(widthSec * widthSec + heightSec * heightSec);
+                const angle = Math.atan2(widthSec, heightSec);
 
-              beamGeo(diagLen, angle, cellCenterX, cellCenterY, true);
-              beamGeo(diagLen, angle, cellCenterX, cellCenterY, false);
+                beamGeo(diagLen, angle, cellCenterX, cellCenterY, true);
+                beamGeo(diagLen, angle, cellCenterX, cellCenterY, false);
+              }
+            }
+          } else if (config.gridPattern === 'v_bracing') {
+            // Arriostramiento en V mecánica invertida para resistencia superior contra ráfagas Zonda
+            for (let vi = 0; vi <= innerPipeWCount; vi++) {
+              const cellLeft = -faceW/2 + vi * stepVert;
+              const cellRight = cellLeft + stepVert;
+              const cellCenterX = (cellLeft + cellRight) / 2;
+              
+              for (let hi = 0; hi <= innerPipeHCount; hi++) {
+                const cellBottom = -faceH/2 + hi * stepHoriz;
+                const cellTop = cellBottom + stepHoriz;
+                const cellCenterY = (cellBottom + cellTop) / 2;
+                
+                const widthSecHalf = stepVert / 2;
+                const heightSec = stepHoriz;
+                const diagLen = Math.sqrt(widthSecHalf * widthSecHalf + heightSec * heightSec);
+                const angle = Math.atan2(widthSecHalf, heightSec);
+
+                const geo = new THREE.BoxGeometry(innerPipeThick * 0.70, diagLen, innerPipeThick * 0.55);
+
+                // Right leg of inverted V
+                const rLeg = new THREE.Mesh(geo, skeletonMat);
+                rLeg.rotation.z = angle;
+                rLeg.position.set(cellCenterX - widthSecHalf / 2, cellCenterY, -pipeThick/2 - 0.005);
+                registerPartMesh(rLeg, 'skeleton');
+                faceGroup.add(rLeg);
+
+                // Left leg of inverted V
+                const lLeg = new THREE.Mesh(geo, skeletonMat);
+                lLeg.rotation.z = -angle;
+                lLeg.position.set(cellCenterX + widthSecHalf / 2, cellCenterY, -pipeThick/2 - 0.005);
+                registerPartMesh(lLeg, 'skeleton');
+                faceGroup.add(lLeg);
+              }
             }
           }
         }
@@ -1046,7 +1320,7 @@ export default function ThreeCanvas({
             </div>
           </div>
 
-          {/* Selector de tipo de poste en vivo */}
+          {/* Selector de tipo de poste en vivo - 4 opciones solicitadas */}
           <div className="grid grid-cols-2 gap-1.5">
             <button
               type="button"
@@ -1061,8 +1335,8 @@ export default function ThreeCanvas({
                   : 'bg-slate-900/60 border-slate-850 text-slate-400 hover:text-slate-200'
               }`}
             >
-              <div className="text-[10.5px] font-black leading-none mb-1">🔴 Caño Tubing</div>
-              <div className="text-[8.5px] text-slate-500 font-mono leading-none">3 ½" / 2 ⅞" Pozo</div>
+              <div className="text-[10px] font-black leading-none mb-1">🔴 Caño Tubing</div>
+              <div className="text-[8.5px] text-slate-500 font-mono leading-none">3 ½" Rezago Pozo</div>
             </button>
 
             <button
@@ -1078,8 +1352,42 @@ export default function ThreeCanvas({
                   : 'bg-slate-900/60 border-slate-850 text-slate-400 hover:text-slate-200'
               }`}
             >
-              <div className="text-[10.5px] font-black leading-none mb-1">🗼 Torre Reticulada</div>
-              <div className="text-[8.5px] text-slate-500 font-mono leading-none">Celosía Antena 44cm</div>
+              <div className="text-[10px] font-black leading-none mb-1">🗼 Reticulada</div>
+              <div className="text-[8.5px] text-cyan-500 font-bold leading-none">Celosía de Antena</div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (onChangeConfig) {
+                  onChangeConfig(prev => ({ ...prev, columnType: 'round_pipe' }));
+                }
+              }}
+              className={`p-2 rounded-lg text-left border transition-all cursor-pointer ${
+                config.columnType === 'round_pipe'
+                  ? 'bg-cyan-950/45 border-cyan-500 text-white shadow-[0_0_10px_rgba(6,182,212,0.15)]'
+                  : 'bg-slate-900/60 border-slate-850 text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <div className="text-[10px] font-black leading-none mb-1">⚪ Caño Redondo</div>
+              <div className="text-[8.5px] text-slate-500 font-mono leading-none">Ø114mm Costura</div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (onChangeConfig) {
+                  onChangeConfig(prev => ({ ...prev, columnType: 'ipn' }));
+                }
+              }}
+              className={`p-2 rounded-lg text-left border transition-all cursor-pointer ${
+                config.columnType === 'ipn'
+                  ? 'bg-cyan-950/45 border-cyan-500 text-white shadow-[0_0_10px_rgba(6,182,212,0.15)]'
+                  : 'bg-slate-900/60 border-slate-850 text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <div className="text-[10px] font-black leading-none mb-1">工 Perfil IPN</div>
+              <div className="text-[8.5px] text-slate-500 font-mono leading-none">Doble T 120 Pesado</div>
             </button>
           </div>
         </div>
@@ -1102,7 +1410,24 @@ export default function ThreeCanvas({
               }`}
             >
               <div className="text-[10.5px] font-black leading-none mb-1">Cruz de San Andrés</div>
-              <div className="text-[8.5px] text-cyan-500 font-bold leading-none">Alta Carga Zonda</div>
+              <div className="text-[8.5px] text-cyan-500 font-bold leading-none">Zonda Extremo</div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (onChangeConfig) {
+                  onChangeConfig(prev => ({ ...prev, gridPattern: 'v_bracing' }));
+                }
+              }}
+              className={`p-2 rounded-lg text-left border transition-all cursor-pointer ${
+                config.gridPattern === 'v_bracing'
+                  ? 'bg-cyan-950/45 border-cyan-500 text-white'
+                  : 'bg-slate-900/60 border-slate-850 text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <div className="text-[10.5px] font-black leading-none mb-1">Mecánico en V</div>
+              <div className="text-[8.5px] text-indigo-400 font-bold leading-none">Anti-Torsor Alta Rigidez</div>
             </button>
 
             <button
@@ -1121,43 +1446,98 @@ export default function ThreeCanvas({
               <div className="text-[10.5px] font-black leading-none mb-1">Regilla Recta</div>
               <div className="text-[8.5px] text-slate-500 leading-none">Tránsito Normal</div>
             </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                if (onChangeConfig) {
+                  onChangeConfig(prev => ({ ...prev, gridPattern: 'horizontal_trusses' }));
+                }
+              }}
+              className={`p-2 rounded-lg text-left border transition-all cursor-pointer ${
+                config.gridPattern === 'horizontal_trusses'
+                  ? 'bg-cyan-950/45 border-cyan-500 text-white'
+                  : 'bg-slate-900/60 border-slate-850 text-slate-400 hover:text-slate-200'
+              }`}
+            >
+              <div className="text-[10.5px] font-black leading-none mb-1">Puntal Horiz.</div>
+              <div className="text-[8.5px] text-slate-500 leading-none">Carga Transversal</div>
+            </button>
           </div>
         </div>
 
-        {/* 3. SIMULADOR DE ENSAMBLADO EN VIVO */}
+        {/* 3. DISEÑOS PRECARGADOS (TEMPLATES) INTEGRADOS EN TALLER MENDOZA */}
         <div className="space-y-2 border-t border-slate-900 pt-2 text-left">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">🔬 Estado de Montaje ({assemblyLevel}%)</span>
-          </div>
+          <span className="text-[10px] font-black uppercase text-amber-500 tracking-wider block">📁 Plantillas Estructurales Precargadas</span>
+          
+          <div className="flex flex-col gap-1">
+            <button
+              type="button"
+              onClick={() => {
+                if (onChangeConfig) {
+                  onChangeConfig(prev => ({
+                    ...prev,
+                    width: 1000,
+                    height: 400,
+                    clearanceHeight: 400,
+                    columnType: 'lattice_antenna',
+                    columnCount: 6,
+                    gridPattern: 'diagonal_cross',
+                    structureShape: 'curved',
+                    windSpeed: 160
+                  }));
+                }
+              }}
+              className="p-1.5 rounded bg-amber-950/30 hover:bg-amber-950/50 border border-amber-600/30 text-left text-white transition-all cursor-pointer"
+            >
+              <div className="text-[10px] font-bold">💨 Zonda Cordillera (Celosía + Curvo)</div>
+              <div className="text-[8.5px] text-amber-400/90 font-mono">160 km/h • 6 Torres Celosía • Cruz San Andrés</div>
+            </button>
 
-          {/* Sliders and fast action buttons inside canvas HUD */}
-          <div className="flex gap-1">
             <button
               type="button"
-              onClick={() => setAssemblyLevel?.(0)}
-              className={`flex-1 py-1 px-1 bg-slate-900 border text-[9px] font-black rounded text-center transition cursor-pointer ${
-                assemblyLevel === 0 ? 'border-cyan-500 text-white bg-cyan-950/20' : 'border-slate-800 text-slate-400'
-              }`}
+              onClick={() => {
+                if (onChangeConfig) {
+                  onChangeConfig(prev => ({
+                    ...prev,
+                    width: 1000,
+                    height: 400,
+                    clearanceHeight: 350,
+                    columnType: 'ipn',
+                    columnCount: 6,
+                    gridPattern: 'v_bracing',
+                    structureShape: 'v_shaped',
+                    windSpeed: 140
+                  }));
+                }
+              }}
+              className="p-1.5 rounded bg-indigo-950/30 hover:bg-indigo-950/50 border border-indigo-600/30 text-left text-white transition-all cursor-pointer"
             >
-              0% (Excavación)
+              <div className="text-[10px] font-bold">🛣️ Frontera Vial (IPN + Doble Faz en V)</div>
+              <div className="text-[8.5px] text-indigo-400 font-mono">140 km/h • 6 IPN Doble T • Arriostramiento en V</div>
             </button>
+
             <button
               type="button"
-              onClick={() => setAssemblyLevel?.(55)}
-              className={`flex-1 py-1 px-1 bg-slate-900 border text-[9px] font-black rounded text-center transition cursor-pointer ${
-                assemblyLevel === 55 ? 'border-indigo-500 text-white bg-indigo-950/20' : 'border-slate-800 text-slate-400'
-              }`}
+              onClick={() => {
+                if (onChangeConfig) {
+                  onChangeConfig(prev => ({
+                    ...prev,
+                    width: 800,
+                    height: 300,
+                    clearanceHeight: 300,
+                    columnType: 'tubing',
+                    columnCount: 4,
+                    gridPattern: 'standard',
+                    structureShape: 'flat',
+                    windSpeed: 110
+                  }));
+                }
+              }}
+              className="p-1.5 rounded bg-slate-900 hover:bg-slate-850 border border-slate-750 text-left text-white transition-all cursor-pointer"
             >
-              55% (Estructura)
-            </button>
-            <button
-              type="button"
-              onClick={() => setAssemblyLevel?.(100)}
-              className={`flex-1 py-1 px-1 bg-slate-900 border text-[9px] font-black rounded text-center transition cursor-pointer ${
-                assemblyLevel === 100 ? 'border-emerald-500 text-white bg-emerald-950/20' : 'border-slate-800 text-slate-400'
-              }`}
-            >
-              100% (Cartel)
+              <div className="text-[10px] font-bold">🏙️ Estándar Mendoza Urbana</div>
+              <div className="text-[8.5px] text-slate-400 font-mono">110 km/h • 4 Caños Tubing • Rejilla Tradicional</div>
             </button>
           </div>
         </div>
@@ -1213,7 +1593,7 @@ export default function ThreeCanvas({
                 <span className="text-violet-400 leading-none">🔩</span>
                 <div>
                   <div className="font-extrabold text-slate-200">Anclajes de Viento</div>
-                  <div className="text-[8.5px] text-slate-500 font-mono">Base {config.anchorPlateThickness}mm s/Cartelas de 3/8"</div>
+                  <div className="text-[8.5px] text-slate-500 font-mono">Base {config.anchorPlateThickness}mm c/Rigidizadores de 3/8"</div>
                 </div>
               </div>
               <span className="font-mono text-[9px] bg-slate-800 px-1 py-0.5 rounded text-violet-400 font-black">x{config.columnCount} juego</span>

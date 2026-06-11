@@ -2,7 +2,7 @@
  * Types & Interfaces for Billboard 3D Designer
  */
 
-export type EsqueletoPattern = 'standard' | 'double_reinforcement' | 'diagonal_cross' | 'horizontal_trusses';
+export type EsqueletoPattern = 'standard' | 'double_reinforcement' | 'diagonal_cross' | 'horizontal_trusses' | 'v_bracing';
 
 export interface StructureConfig {
   width: number; // in cm, e.g., 800
@@ -34,7 +34,7 @@ export interface StructureConfig {
 
   // Interactive variations requested by Marcelo Escudero
   structureShape?: 'flat' | 'curved' | 'v_shaped';
-  columnType?: 'tubing' | 'high_tension' | 'lattice_antenna';
+  columnType?: 'tubing' | 'round_pipe' | 'lattice_antenna' | 'ipn';
 }
 
 export interface MaterialItem {

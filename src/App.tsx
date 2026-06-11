@@ -583,8 +583,8 @@ export default function App() {
                   </div>
                 </div>
 
-                {/* Assembly simulation controller */}
-                <div className="bg-slate-900/60 p-3 rounded-xl border border-slate-850 space-y-3.5">
+                {/* Assembly simulation controller (Removed by user choice) */}
+                <div className="hidden">
                   <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
                     <div className="flex items-center gap-2">
                        <HardHat className="w-4 h-4 text-amber-500 shrink-0" />
@@ -751,8 +751,9 @@ export default function App() {
                               <div className="flex justify-between">
                                 <span className="text-slate-400">Diseño Actual:</span>
                                 <span className="font-extrabold text-cyan-400 font-mono uppercase">
-                                  {config.columnType === 'high_tension' ? 'Alta Tensión' 
-                                   : config.columnType === 'lattice_antenna' ? 'Torre Reticulada Antena' 
+                                  {config.columnType === 'lattice_antenna' ? 'Torre Reticulada Celosía' 
+                                   : config.columnType === 'ipn' ? 'Perfil Doble T IPN 120'
+                                   : config.columnType === 'round_pipe' ? 'Caño Redondo Industrial'
                                    : 'Tubing Petrolero estándar'}
                                 </span>
                               </div>
@@ -808,25 +809,26 @@ export default function App() {
                               Configurar Tipo de Estructura de Columnas:
                             </span>
                           </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
                             {[
                               { value: 'tubing', label: '🪨 Tubing petrolero', desc: 'Columnas de caño redondo de pozo petrolero sin costura.' },
-                              { value: 'high_tension', label: '⚡ Tendido Alta Tensión', desc: 'Postes con crucetas brazos para soporte eléctrico.' },
-                              { value: 'lattice_antenna', label: '🗼 Torre Reticulada', desc: 'Trusses metálicos triangulares enrejados de antena.' }
+                              { value: 'lattice_antenna', label: '🗼 Torre Reticulada', desc: 'Trusses metálicos triangulares enrejados de antena.' },
+                              { value: 'round_pipe', label: '⚪ Caño Redondo', desc: 'Tubería industrial de acero redondo laminado Ø114mm Ø4.5".' },
+                              { value: 'ipn', label: '工 Perfil IPN', desc: 'Viga estructural IPN 120 pesada de alta resistencia.' }
                             ].map((opt) => (
                               <button
                                 key={opt.value}
                                 type="button"
                                 onClick={() => setConfig(prev => ({ ...prev, columnType: opt.value as any }))}
-                                className={`p-2.5 rounded-xl text-left border cursor-pointer transition-all ${
+                                className={`p-2 rounded-xl text-left border cursor-pointer transition-all ${
                                   (config.columnType || 'tubing') === opt.value
                                     ? 'bg-cyan-500/15 border-cyan-400 text-white shadow-[0_0_12px_rgba(34,211,238,0.2)]'
                                     : 'bg-slate-950/60 border-slate-850 text-slate-400 hover:text-white hover:border-slate-700'
                                 }`}
                                 title={opt.desc}
                               >
-                                <div className="text-[11px] font-extrabold tracking-tight leading-tight uppercase mb-0.5">{opt.label}</div>
-                                <p className="text-[9px] text-slate-410 leading-normal line-clamp-2">{opt.desc}</p>
+                                <div className="text-[10px] font-extrabold tracking-tight leading-tight uppercase mb-0.5">{opt.label}</div>
+                                <p className="text-[8px] text-slate-400 leading-tight line-clamp-2">{opt.desc}</p>
                               </button>
                             ))}
                           </div>
@@ -950,7 +952,10 @@ export default function App() {
                               <div className="flex justify-between">
                                 <span className="text-slate-400">Arriostramiento contra-viento:</span>
                                 <span className="font-bold text-cyan-400 font-mono uppercase">
-                                  {config.gridPattern === 'diagonal_cross' ? 'Cruz de San Andrés' : 'Grilla Recta Tradicional'}
+                                  {config.gridPattern === 'diagonal_cross' ? 'Cruz de San Andrés' 
+                                   : config.gridPattern === 'v_bracing' ? 'Mecánico en V (Zonda)'
+                                   : config.gridPattern === 'horizontal_trusses' ? 'Puntales Horizontales'
+                                   : 'Grilla Recta Tradicional'}
                                 </span>
                               </div>
                               <div className="flex justify-between">
@@ -999,24 +1004,26 @@ export default function App() {
                               Configurar Patrones de Arriostramiento de la Estructura:
                             </span>
                           </div>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
                             {[
-                              { value: 'standard', label: '📏 Grilla Recta Simple', desc: 'Entramado reticular recto estándar de caño estructural.' },
-                              { value: 'diagonal_cross', label: '❌ Cruz de San Andrés', desc: 'Arriostramiento en equis (X) para máxima resistencia contra torsiones y ráfagas.' }
+                              { value: 'standard', label: '📏 Grilla Recta', desc: 'Entramado reticular recto estándar de caño estructural.' },
+                              { value: 'diagonal_cross', label: '❌ Cruz de San Andrés', desc: 'Arriostramiento en equis (X) para máxima resistencia contra ráfagas Zonda.' },
+                              { value: 'v_bracing', label: '📐 Mecánico en V', desc: 'Arriostramiento especial en forma de V invertida para rigidez superior.' },
+                              { value: 'horizontal_trusses', label: '⛓️ Puntal Horiz.', desc: 'Rigidizadores transversales continuos anti-flameo.' }
                             ].map((opt) => (
                               <button
                                 key={opt.value}
                                 type="button"
                                 onClick={() => setConfig(prev => ({ ...prev, gridPattern: opt.value as any }))}
-                                className={`p-2.5 rounded-xl text-left border cursor-pointer transition-all ${
+                                className={`p-2 rounded-xl text-left border cursor-pointer transition-all ${
                                   config.gridPattern === opt.value
                                     ? 'bg-cyan-500/15 border-cyan-400 text-white shadow-[0_0_12px_rgba(34,211,238,0.2)]'
                                     : 'bg-slate-950/60 border-slate-850 text-slate-400 hover:text-white hover:border-slate-700'
                                 }`}
                                 title={opt.desc}
                               >
-                                <div className="text-[11px] font-extrabold tracking-tight leading-tight uppercase mb-0.5">{opt.label}</div>
-                                <p className="text-[9px] text-slate-400 leading-normal line-clamp-2">{opt.desc}</p>
+                                <div className="text-[10px] font-extrabold tracking-tight leading-tight uppercase mb-0.5">{opt.label}</div>
+                                <p className="text-[8px] text-slate-400 leading-tight line-clamp-2">{opt.desc}</p>
                               </button>
                             ))}
                           </div>
@@ -1365,6 +1372,7 @@ export default function App() {
                           const wM = config.width / 100;
                           const hM = config.height / 100;
                           const area = wM * hM;
+                          const colType = config.columnType || 'tubing';
                           
                           // Wind pressure q = 0.0053 * V^2 (kg/m2)
                           const q = 0.0053 * v * v;
@@ -1378,10 +1386,30 @@ export default function App() {
                           const momentKgm = forceTotalKg * leverArmM;
                           const momentTonm = momentKgm / 1000;
 
-                          // Structural stability factor evaluation
-                          const tubeResilienceIndex = config.columnProfile === 'tubing_3_1_2' ? 5200 : config.columnProfile === 'tubing_2_7_8' ? 2600 : 6000;
+                          // Structural stability factor evaluation based on selected column type and mechanical bracing
+                          let columnResilienceIndex = 5000;
+                          if (config.columnType === 'lattice_antenna') {
+                            columnResilienceIndex = 11500; // Torre Reticulada
+                          } else if (config.columnType === 'ipn') {
+                            columnResilienceIndex = 9600; // Perfil Doble T IPN
+                          } else if (config.columnType === 'round_pipe') {
+                            columnResilienceIndex = 4800; // Caño Redondo Ø114mm
+                          } else {
+                            // Tubing post profiles
+                            columnResilienceIndex = config.columnProfile === 'tubing_3_1_2' ? 5200 : config.columnProfile === 'tubing_2_7_8' ? 2600 : 3500;
+                          }
+
+                          let bracingFactor = 1.0;
+                          if (config.gridPattern === 'v_bracing') {
+                            bracingFactor = 1.45; // Mechanical V bracing high wind load
+                          } else if (config.gridPattern === 'diagonal_cross') {
+                            bracingFactor = 1.30; // Cruz de San Andrés
+                          } else if (config.gridPattern === 'horizontal_trusses') {
+                            bracingFactor = 1.15; // Horizontal trusses
+                          }
+
                           const concreteStabilityFactor = (config.columnBuriedDepth / 300) * (config.columnBuriedDepth / 300);
-                          const totalStructuralStrength = config.columnCount * tubeResilienceIndex * concreteStabilityFactor;
+                          const totalStructuralStrength = config.columnCount * columnResilienceIndex * concreteStabilityFactor * bracingFactor;
                           const safetyFactor = Math.max(0.1, totalStructuralStrength / (momentKgm || 1));
 
                           let stabilityStatus = "ÓPTIMO 🛡️";
@@ -1436,6 +1464,54 @@ export default function App() {
                                 <span className={`font-mono font-bold capitalize ${stabilityColor}`}>
                                   {stabilityStatus} (cs: {safetyFactor.toFixed(2)})
                                 </span>
+                              </div>
+
+                              {/* RECOMENDACIÓN DINÁMICA CIRSOC MENDOZA */}
+                              <div className="mt-2 bg-slate-950/90 p-2 rounded border border-slate-800 text-[9px] text-slate-300 space-y-1">
+                                <div className="font-extrabold text-[9px] text-amber-500 uppercase tracking-wider flex items-center gap-1">
+                                  <span>📋 Dictamen de Ingeniería (Mendoza CIRSOC):</span>
+                                </div>
+                                <div className="space-y-1.5 text-[8.5px] leading-relaxed text-slate-400">
+                                  {/* Recomendación según Column Type */}
+                                  <div className="flex items-start gap-1">
+                                    <span className="text-cyan-400 font-mono">▸</span>
+                                    <span>
+                                      {colType === 'lattice_antenna' ? (
+                                        <>Soporte <strong>Torre Reticulada</strong>: Excelente distribución de esfuerzos torsionales y baja carga de viento propia. Apto para ráfagas severas en Alta Montaña.</>
+                                      ) : colType === 'ipn' ? (
+                                        <>Perfil <strong>IPN Doble T</strong>: Elevada inercia flexional. Asegure la perpendicularidad de las alas principales frente al plano del cartel para mitigar flexotorsión.</>
+                                      ) : (
+                                        <>Pilares de <strong>{config.columnProfile === 'tubing_3_1_2' ? 'Tubing 3 1/2"' : 'Tubing 2 7/8"'} (Petróleo)</strong>: Acero de alta elasticidad. Los manguitos (casing) en la base absorben la fatiga cíclica en la unión con la platea.</>
+                                      )}
+                                    </span>
+                                  </div>
+
+                                  {/* Recomendación según Bracing / Cuadrícula */}
+                                  <div className="flex items-start gap-1">
+                                    <span className="text-violet-400 font-mono">▸</span>
+                                    <span>
+                                      {config.gridPattern === 'diagonal_cross' ? (
+                                        <>Entramado en <strong>Cruz de San Andrés</strong>: Rigidez óptima ante esfuerzos cortantes alternantes provocados por succión trasera del viento Zonda.</>
+                                      ) : config.gridPattern === 'v_bracing' ? (
+                                        <>Arriostramiento en <strong>V Invertida</strong>: Minimiza la deflexión local en chapas, impidiendo el efecto de flameo de perfiles frontales.</>
+                                      ) : (
+                                        <>⚠️ Se aconseja cambiar a <strong>Cruz de San Andrés / V</strong> para evitar deformaciones permanentes del esqueleto interno.</>
+                                      )}
+                                    </span>
+                                  </div>
+
+                                  {/* Validación según área y velocidad */}
+                                  <div className="flex items-start gap-1 border-t border-slate-900 pt-1">
+                                    <span className="text-rose-400 font-mono">▸</span>
+                                    <span>
+                                      {area > 12 ? (
+                                        <><span className="text-rose-400 font-bold uppercase">Riesgo Escala:</span> Formato grande ({area.toFixed(1)} m²). Exige coeficiente de seguridad &gt; <strong>1.50</strong> y base profunda con Hormigón <strong>H25</strong>.</>
+                                      ) : (
+                                        <>Formato compacto ({area.toFixed(1)} m²). Baja resistencia de arrastre. Coeficiente de seguridad aconsejable: &gt; 1.20.</>
+                                      )}
+                                    </span>
+                                  </div>
+                                </div>
                               </div>
                             </div>
                           );
@@ -1813,13 +1889,19 @@ Le solicito cotización para la provisión de los siguientes materiales adiciona
     if (item.id === 'mat_cimentacion') {
       specLabel = `Hormigón Elaborado Estructural Clase H-${config.foundationConcreteGrade.toUpperCase().replace('H', '')}`;
       detailedDescription = `Hormigón elaborado normalizado para el llenado de ${config.columnCount} pozos de cimentación de ${config.foundationWidth}x${config.foundationWidth} cm de sección y ${config.foundationDepth} cm de profundidad.`;
-    } else if (item.id === 'mat_anclajes') {
-      specLabel = `Kits de Anclaje de Viento de Alta Resistencia`;
+    } else if (item.id === 'mat_anclajes_pernos') {
+      specLabel = `Pernos de Anclaje de Alta Resistencia J-Bolt ø 7/8"`;
+      detailedDescription = `Pernos de cimentación roscados curvados de 7/8" x 500 mm, grado ASTM A307 / F-24, provistos con tuerca hexagonal pesada de ajuste y arandela Grower de presión.`;
+    } else if (item.id === 'mat_anclajes_platinas') {
       const basePlateWidth = Math.round(config.foundationWidth * 0.70 * 10);
-      detailedDescription = `Kit de Arriostramiento que contiene:
-     * Placa Base de acero estructural de ${basePlateWidth}x${basePlateWidth} mm cortada de chapa de ${config.anchorPlateThickness} mm de espesor, perforada con ojales para pernos de ${config.anchorBoltDiameter}".
-     * Refuerzos de unión: 4 escuadras triangulares para impedir flexión y fatiga de la soldadura de unión (espesor 9.5 mm / 3/8", medidas de 80 mm de base por 160 mm de altura, para soldar perpendicularmente al tubo y base).
-     * Pernos de cimentación (Anclajes J-Bolt): 4 pernos roscados curvados tipo J-Bolt de diámetro ${config.anchorBoltDiameter}" x 500 mm de longitud lineal, fabricados en acero grado ASTM A307 / F-24, con rosca provista de tuerca y arandela de presión cada uno.`;
+      const isLatt = config.columnType === 'lattice_antenna';
+      specLabel = isLatt ? `Placas Bases de Acero e:12mm (200x200 mm) para Patas de Torre` : `Platinas de Acero Base de Columnas de Soporte e:12mm`;
+      detailedDescription = isLatt
+        ? `Placas de chapa lisa de espesor 12 mm (1/2") cortadas a 200x200 mm para soldadura individual de las patas de las torres de celosía.`
+        : `Placa base de acero de ${basePlateWidth}x${basePlateWidth} mm de chapa de 12 mm de espesor (1/2"), perforada en las esquinas con ojales de pase para pernos de anclaje.`;
+    } else if (item.id === 'mat_anclajes_escuadras') {
+      specLabel = `Rigidizadores Triangulares de rigidización de Brida (e:9.5mm / 3/8")`;
+      detailedDescription = `Rigidizadores triangulares de 80x160 mm cortados de chapa pesada de 9.5 mm, a soldar perpendicularmente al rededor de los postes de soporte.`;
     } else if (item.id === 'mat_tornillos') {
       specLabel = `Tornillos Autoperforantes 1" c/Arandela Vulcanizada`;
       detailedDescription = `Tornillos autoperforantes de cabeza hexagonal de 1" de largo provistos de arandela vulcanizada de neoprene EPDM para fijación estanca de chapa sobre perfiles.`;
